@@ -47,3 +47,6 @@ Linux/Windows/macOS native (Bevy). Optional WASM later.
 
 ## Quality bar
 60 fps target on mid GPU; `cargo run --release`.
+
+## Optional: Split-screen co-op
+Clone viewport/slot logic from nordrep (`core/split.rs`). Player 1 uses mouse + keyboard exclusively; Player 2 uses a gamepad exclusively (drive, shoot, enter/exit). Console: `split 1|2`.
