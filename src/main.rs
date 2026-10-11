@@ -8,6 +8,7 @@ mod meshgen;
 mod noise;
 mod player;
 mod session;
+mod story;
 mod settings;
 mod terrain;
 mod vehicle;
@@ -34,6 +35,7 @@ fn main() {
             weapons::WeaponsPlugin,
             enemies::EnemiesPlugin,
             audio::GameAudioPlugin,
+            story::StoryPlugin,
         ))
         .run();
 }
