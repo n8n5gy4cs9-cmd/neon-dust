@@ -104,7 +104,7 @@ impl FxQueue {
 }
 
 // ---------- SFX queue ---------------------------------------------------
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Sfx {
     Pistol,
     Smg,

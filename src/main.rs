@@ -1,3 +1,4 @@
+mod audio;
 mod camera;
 mod capture;
 mod enemies;
@@ -32,6 +33,7 @@ fn main() {
             player::PlayerPlugin,
             weapons::WeaponsPlugin,
             enemies::EnemiesPlugin,
+            audio::GameAudioPlugin,
         ))
         .run();
 }
