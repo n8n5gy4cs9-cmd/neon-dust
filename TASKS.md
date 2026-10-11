@@ -1,16 +1,16 @@
 # Neon Dust — Task Board
 _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ = optional. Update this file with every commit._
 
-**Progress: 38/78 tasks done** · version 0.1.0 · updated 2026-10-11
+**Progress: 52/78 tasks done** · version 0.1.0 · updated 2026-10-11
 
-**WHERE TO CONTINUE:** World, vehicle, on-foot, weapons, fx, enemies, audio and story logic all compile and run (software-rendered screenshots verified). NEXT: UI (loading splash shader, title menu, HUD, overlays) → dev console → HTML game page with real screenshots → balance/polish pass.
+**WHERE TO CONTINUE:** World, vehicle, on-foot, weapons, fx, enemies, audio and story logic all compile and run (software-rendered screenshots verified). NEXT: playtest/balance pass, split-screen co-op (optional M12), tunnel/menu shader extras (M10.7-9), release QA (M13).
 
-## M0 — Plans & docs  (3/5)
+## M0 — Plans & docs  (5/5)
 - [x] **M0.1** Write PRD.md (pitch, story, pillars, features, non-goals)
 - [x] **M0.2** Write PLAN.md (stack, module layout, 2D→3D coordinate mapping, milestones)
 - [x] **M0.3** Write TASKS.md (this board) in detailed milestone format
-- [ ] **M0.4** docs/index.html: full game page — screenshots, guide, manual, controls, console reference
-- [ ] **M0.5** README.md (build/run, controls, credits incl. Shadertoy inspirations)
+- [x] **M0.4** docs/index.html: full game page — screenshots, guide, manual, controls, console reference
+- [x] **M0.5** README.md (build/run, controls, credits incl. Shadertoy inspirations)
 
 ## M1 — Project skeleton  (5/6)
 - [x] **M1.1** Cargo project, Bevy 0.16 (+wav), dev/release profiles — _deps opt-level 3 in dev_
@@ -95,24 +95,24 @@ _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ =
 - [x] **M9.4** Terminal hack mechanic (hold E), sentry gate
 - [ ] **M9.5** Extra side missions (time trial, wave defence) ★
 
-## M10 — UI  (0/9)
-- [ ] **M10.1** Loading splash: kaleidoscope raymarch shader (Shadertoy "Active Matter" structure, PI tuned 3.6/4.1) + progress bar + cool rotating status text
-- [ ] **M10.2** Title menu: gradient letter title, controls, story blurb, blinking prompt
-- [ ] **M10.3** HUD: speed, boost bar, integrity bar, weapon/ammo, objective + bearing, score, crosshair
-- [ ] **M10.4** Radar, toasts, dialogue box with typing effect, boss bar, hack bar
-- [ ] **M10.5** Damage vignette, FPS counter
-- [ ] **M10.6** Pause / Kernel Panic / Ending overlays
+## M10 — UI  (6/9)
+- [x] **M10.1** Loading splash: kaleidoscope raymarch shader (Shadertoy "Active Matter" structure, PI tuned 3.6/4.1) + progress bar + cool rotating status text
+- [x] **M10.2** Title menu: gradient letter title, controls, story blurb, blinking prompt
+- [x] **M10.3** HUD: speed, boost bar, integrity bar, weapon/ammo, objective + bearing, score, crosshair
+- [x] **M10.4** Radar, toasts, dialogue box with typing effect, boss bar, hack bar
+- [x] **M10.5** Damage vignette, FPS counter
+- [x] **M10.6** Pause / Kernel Panic / Ending overlays
 - [ ] **M10.7** Tunnel effect (Shadertoy tXGGRD-style) for boot intro and ending ★
 - [ ] **M10.8** Reflective neon-city water band behind menu (fdffz2-style) ★
 - [ ] **M10.9** Gradient text shader (ttBGRD-style) for title ★
 
-## M11 — Console & cheats (nordrep-style)  (0/6)
-- [ ] **M11.1** Pure command registry + parser + aliases + tab completion + history (core/commands)
-- [ ] **M11.2** Console UI (` key), scrollback, input caret, input capture
-- [ ] **M11.3** General commands: help, commands, clear, echo, history, version, quit, pos, status, seed, fps, fov, bloom, fog, viewdist, timescale, musicvol, sfxvol, sens, track, screenshot
-- [ ] **M11.4** Cheat commands (need `cheats on`): god, noclip, infammo, onehit, peaceful, infboost, lowgrav, speed, heal, give, tp, goto, spawn, killall, car, flip, mission, next, regen
-- [ ] **M11.5** `--cmd "..."` CLI to run console lines at startup
-- [ ] **M11.6** commands.txt generated from registry
+## M11 — Console & cheats (nordrep-style)  (6/6)
+- [x] **M11.1** Pure command registry + parser + aliases + tab completion + history (core/commands)
+- [x] **M11.2** Console UI (` key), scrollback, input caret, input capture
+- [x] **M11.3** General commands: help, commands, clear, echo, history, version, quit, pos, status, seed, fps, fov, bloom, fog, viewdist, timescale, musicvol, sfxvol, sens, track, screenshot
+- [x] **M11.4** Cheat commands (need `cheats on`): god, noclip, infammo, onehit, peaceful, infboost, lowgrav, speed, heal, give, tp, goto, spawn, killall, car, flip, mission, next, regen
+- [x] **M11.5** `--cmd "..."` CLI to run console lines at startup
+- [x] **M11.6** commands.txt generated from registry
 
 ## M12 — Split-screen co-op ★ (optional)  (0/5)
 - [ ] **M12.1** Port nordrep `core/split.rs` layout rules (1–2 players, top/bottom or left/right)

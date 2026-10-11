@@ -1,5 +1,7 @@
 mod audio;
 mod camera;
+mod commands;
+mod console;
 mod capture;
 mod enemies;
 mod fx;
@@ -38,6 +40,7 @@ fn main() {
             audio::GameAudioPlugin,
             story::StoryPlugin,
             ui::UiPlugin,
+            console::ConsolePlugin,
         ))
         .run();
 }

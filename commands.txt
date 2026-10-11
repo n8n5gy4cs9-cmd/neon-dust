@@ -1,0 +1,104 @@
+NEON DUST CONSOLE COMMANDS  (generated from src/commands.rs; run `neon-dust --docs`)
+Open with ` (backtick). Tab completes, Up/Down = history.
+Commands marked [cheat] need `cheats on` first.
+
+== General ==
+  help [command]
+      List commands or explain one.   (aliases: ?, h)
+  commands
+      Print every command name.   (aliases: cmds)
+  clear
+      Clear the console log.   (aliases: cls)
+  echo <text>
+      Print text.   (aliases: say)
+  history
+      Show previous commands (Up/Down also cycle).
+  version
+      Show game version.   (aliases: ver)
+  quit
+      Quit the game.   (aliases: exit)
+  cheats [on|off]
+      Enable cheat commands (marks the run as cheated).
+  pos
+      Print your position.   (aliases: where)
+  status
+      HP, kills, score, mission, enemies.   (aliases: stat)
+  missions
+      List mission step names.
+  seed [n]
+      Show world seed; with n (cheat) regenerate the world.
+== Video ==
+  fps [on|off]
+      Show the FPS counter.
+  fov <40-120>
+      Field of view.
+  bloom <0-1.5>
+      Bloom intensity.
+  fog <200-4000>
+      Fog visibility distance (m).
+  viewdist <2-10>
+      Terrain view radius in chunks (128 m each).   (aliases: vd)
+  screenshot
+      Save screenshot_N.png.   (aliases: shot)
+== Game ==
+  timescale <0.1-4>
+      Game speed.   (aliases: ts)
+== Audio ==
+  musicvol <0-1>
+      Music volume.
+  sfxvol <0-1>
+      SFX volume.
+  track <0-3|auto>
+      Force music: 0 menu 1 drive 2 combat 3 port.
+== Game ==
+  sens <0.0005-0.01>
+      Mouse sensitivity.
+== Cheats ==
+  god [on|off]   [cheat]
+      Cannot be hurt.   (aliases: godmode)
+  noclip [on|off]   [cheat]
+      Fly through everything (on foot): SPACE up, CTRL down.   (aliases: fly, ghost)
+  infammo [on|off]   [cheat]
+      Infinite ammo.   (aliases: ammo)
+  onehit [on|off]   [cheat]
+      Every hit kills.   (aliases: ohk)
+  peaceful [on|off]   [cheat]
+      Enemies stop shooting & spawning.   (aliases: calm)
+  infboost [on|off]   [cheat]
+      Unlimited boost.   (aliases: nitro)
+  lowgrav [on|off]   [cheat]
+      Low gravity.   (aliases: moon)
+  speed <0.2-5>   [cheat]
+      Movement/engine power multiplier.
+  heal   [cheat]
+      Full integrity + boost.
+  kill   [cheat]
+      Kernel panic yourself.   (aliases: suicide)
+  killall   [cheat]
+      Destroy every enemy.
+  give <all|ammo|boost|1-4>   [cheat]
+      Give weapons / ammo / boost.
+  tp <x> <z>   [cheat]
+      Teleport to world coordinates.   (aliases: teleport)
+  goto <start|target|car>   [cheat]
+      Teleport to start / mission beacon / your car.
+  car   [cheat]
+      Bring the car to you.
+  drive   [cheat]
+      Jump into the car.
+  flip   [cheat]
+      Put the car back on its wheels.
+  spawn <drone|sentry|car|boss> [n]   [cheat]
+      Spawn enemies in front of you.
+  wave   [cheat]
+      Spawn a mixed enemy wave.
+  explode   [cheat]
+      Explosion at the crosshair.   (aliases: boom)
+  score <n>   [cheat]
+      Add score.
+  mission <name>   [cheat]
+      Jump to a mission step (see `missions`).
+  next   [cheat]
+      Skip to the next mission step.   (aliases: skip)
+  regen [seed]   [cheat]
+      Rebuild the world (optional new seed).

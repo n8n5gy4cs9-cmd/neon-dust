@@ -295,7 +295,7 @@ fn enemy_ai(
                             }
                             en.cd = 1.6;
                         } else {
-                            spawn_bullet(&mut commands, &fxa, tr.translation + d * 1.5, d, 95.0, 6.0, false, 4, 0.0, 2.5);
+                            spawn_bullet(&mut commands, &fxa, tr.translation + d * 1.5, d, 95.0, 4.5, false, 4, 0.0, 2.5);
                             if en.burst == 0 {
                                 en.burst = 2;
                                 en.cd = 0.14;

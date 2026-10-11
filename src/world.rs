@@ -169,7 +169,7 @@ fn setup_world(
     let mats = WorldMats {
         terrain: neon_mats.add(neon(sd.clone(), 0.0, 1.0, 7.0, 1.0, Vec4::new(0.1, 0.9, 1.0, 1.0))),
         under: neon_mats.add(neon(sd.clone(), 4.0, 1.0, 7.0, 1.0, Vec4::new(1.0, 0.1, 0.8, 1.0))),
-        props: neon_mats.add(neon(StandardMaterial { perceptual_roughness: 0.55, ..default() }, 1.0, 0.6, 7.0, 1.0, Vec4::new(0.2, 0.9, 1.0, 1.0))),
+        props: neon_mats.add(neon(StandardMaterial { perceptual_roughness: 0.55, ..default() }, 1.0, 0.6, 7.0, 0.55, Vec4::new(0.2, 0.9, 1.0, 1.0))),
         water: neon_mats.add(neon(
             StandardMaterial { base_color: Color::srgba(0.0, 0.05, 0.2, 0.9), alpha_mode: AlphaMode::Blend, perceptual_roughness: 0.05, ..default() },
             2.0, 1.0, 7.0, 1.0, Vec4::new(0.1, 0.9, 1.0, 1.0),
@@ -308,10 +308,10 @@ fn setup_world(
         std_mats.add(StandardMaterial { base_color: Color::srgba(1.0, 0.5, 0.3, 0.25), unlit: true, alpha_mode: AlphaMode::Blend, fog_enabled: false, ..default() }),
     ];
     let mut rng = Rng::new(s as u64 + 5);
-    for i in 0..110 {
+    for i in 0..90 {
         let a = rng.range(0.0, 6.283);
         let d = rng.range(150.0, 2200.0);
-        let below = i % 5 != 0;
+        let below = i % 3 != 0;
         let y = if below { rng.range(-420.0, -90.0) } else { rng.range(260.0, 520.0) };
         let sc = rng.range(60.0, 260.0);
         commands.spawn((

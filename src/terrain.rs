@@ -294,7 +294,7 @@ pub fn build_chunk(cx: i32, cz: i32) -> ChunkData {
                     m.frustum(Vec3::ZERO, 0.35, 0.2, 3.2, 5, col(0.05, 0.03, 0.1, 0.0), false);
                     for k in 0..3 {
                         let r = 2.6 - k as f32 * 0.7;
-                        m.cone(Vec3::new(0.0, 2.0 + k as f32 * 1.9, 0.0), r, 3.2, 7, col(glow[0] * 0.12, glow[1] * 0.12, glow[2] * 0.12, 0.55), true);
+                        m.cone(Vec3::new(0.0, 2.0 + k as f32 * 1.9, 0.0), r, 3.2, 7, col(glow[0] * 0.08, glow[1] * 0.08, glow[2] * 0.08, 0.32), true);
                     }
                 });
                 colliders.push(Prop { pos: Vec2::new(px, pz), radius: 0.6 * scale });

@@ -69,6 +69,8 @@ enum Bar {
     Load,
 }
 #[derive(Component)]
+struct BarBox(Bar);
+#[derive(Component)]
 struct Vignette;
 #[derive(Component)]
 struct DlgBox;
@@ -107,7 +109,7 @@ fn grad(k: f32) -> Color {
 }
 
 fn bar(p: &mut ChildSpawnerCommands, kind: Bar, w: f32, h: f32, c: Color) {
-    p.spawn((Node { width: Val::Px(w), height: Val::Px(h), border: UiRect::all(Val::Px(1.0)), ..default() }, BorderColor(Color::srgba(1.0, 1.0, 1.0, 0.35)), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5))))
+    p.spawn((Node { width: Val::Px(w), height: Val::Px(h), border: UiRect::all(Val::Px(1.0)), ..default() }, BorderColor(Color::srgba(1.0, 1.0, 1.0, 0.35)), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)), BarBox(kind)))
         .with_children(|b| {
             b.spawn((Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(c), kind));
         });
@@ -456,24 +458,24 @@ fn hud_bars(
     car: Query<&Vehicle, With<PlayerCar>>,
     boss: Query<&Enemy>,
     loading: Res<Loading>,
-    mut q: Query<(&mut Node, &Bar)>,
-    mut parents: Query<&mut Node, Without<Bar>>,
-    child_of: Query<&ChildOf, With<Bar>>,
+    mut q: Query<(&mut Node, &Bar), Without<BarBox>>,
+    mut boxes: Query<(&mut Node, &BarBox), Without<Bar>>,
 ) {
     let bf = car.single().map(|v| v.boost_fuel).unwrap_or(0.0);
     let bossv = boss.iter().find(|e| e.kind == EnemyKind::Boss);
     let hack_on = story.step == crate::story::Step::Hack;
-    let _ = (&mut parents, &child_of);
-    for (mut n, b) in &mut q {
-        let (frac, visible) = match b {
-            Bar::Hp => (stats.hp / stats.max_hp, true),
-            Bar::Boost => (bf, ctl.in_car),
-            Bar::Hack => (story.hack, hack_on),
-            Bar::Boss => (bossv.map(|e| e.hp / e.max).unwrap_or(0.0), bossv.is_some()),
+    let calc = |b: &Bar| match b {
+        Bar::Hp => (stats.hp / stats.max_hp, true),
+        Bar::Boost => (bf, ctl.in_car),
+        Bar::Hack => (story.hack, hack_on),
+        Bar::Boss => (bossv.map(|e| e.hp / e.max).unwrap_or(0.0), bossv.is_some()),
             Bar::Load => (loading.progress, true),
-        };
-        n.width = Val::Percent((frac * 100.0).clamp(0.0, 100.0));
-        n.display = if visible { Display::Flex } else { Display::None };
+    };
+    for (mut n, b) in &mut q {
+        n.width = Val::Percent((calc(b).0 * 100.0).clamp(0.0, 100.0));
+    }
+    for (mut n, b) in &mut boxes {
+        n.display = if calc(&b.0).1 { Display::Flex } else { Display::None };
     }
 }
 
