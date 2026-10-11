@@ -50,6 +50,8 @@ footer{text-align:center;color:var(--dim);padding:40px 16px}
 <figure><a href='shots/drive.jpg'><img src='shots/drive.jpg' alt='Driving with the third-person chase camera, HUD and radar' loading='lazy'></a><figcaption>Driving with the third-person chase camera, HUD and radar</figcaption></figure>
 <figure><a href='shots/combat.jpg'><img src='shots/combat.jpg' alt='Pursuit car and Glitcher drones closing in' loading='lazy'></a><figcaption>Pursuit car and Glitcher drones closing in</figcaption></figure>
 <figure><a href='shots/water.jpg'><img src='shots/water.jpg' alt='Rivers, floating islands and distant ridges' loading='lazy'></a><figcaption>Rivers, floating islands and distant ridges</figcaption></figure>
+<figure><a href='shots/split.jpg'><img src='shots/split.jpg' alt='Two-player split-screen co-op (P1 keyboard + mouse, P2 gamepad)' loading='lazy'></a><figcaption>Two-player split-screen co-op (P1 keyboard + mouse, P2 gamepad)</figcaption></figure>
+<figure><a href='shots/intro.jpg'><img src='shots/intro.jpg' alt='Boot intro tunnel shader' loading='lazy'></a><figcaption>Boot intro tunnel shader</figcaption></figure>
 <figure><a href='shots/console.jpg'><img src='shots/console.jpg' alt='The developer console (` key)' loading='lazy'></a><figcaption>The developer console (` key)</figcaption></figure></div>
 
 <h2 id="play">Quick start</h2>
@@ -73,6 +75,17 @@ cargo run --release</pre>
 <tr><td>Pause</td><td colspan="2"><kbd>Esc</kbd></td></tr>
 <tr><td>Console</td><td colspan="2"><kbd>`</kbd> (backtick)</td></tr></table>
 
+<h3>Split-screen co-op (2 players)</h3>
+<p>Player 1 uses <b>keyboard + mouse only</b>. Player 2 uses a <b>gamepad only</b> - press <kbd>Start</kbd> on the pad during play to join, or type <code>split 2</code> in the console (<code>split 1</code> leaves, <code>splitmode tb|lr</code> switches top/bottom vs left/right). Each player has their own car, camera viewport, HUD, radar, weapons and ammo; enemies target the nearest player, objectives and score are shared. A downed player reboots next to their partner after 5 s; both down = Kernel Panic.</p>
+<table class="t"><tr><th>Action</th><th>Gamepad (P2) in car</th><th>Gamepad (P2) on foot</th></tr>
+<tr><td>Move / steer</td><td>Left stick steers</td><td>Left stick moves, right stick looks</td></tr>
+<tr><td>Throttle / brake</td><td>RT / LT</td><td>-</td></tr>
+<tr><td>Handbrake drift / jump</td><td>A</td><td>A (jump)</td></tr>
+<tr><td>Boost / sprint</td><td>B</td><td>Left stick click</td></tr>
+<tr><td>Fire</td><td>X cannons, RB rockets</td><td>RT fire, LT aim</td></tr>
+<tr><td>Enter / exit car</td><td colspan="2">Y</td></tr>
+<tr><td>Weapon</td><td>D-pad left/right</td><td>D-pad or LB / RB</td></tr>
+<tr><td>Hack terminal</td><td colspan="2">hold X near the terminal</td></tr></table>
 <h2 id="guide">Player guide</h2>
 <div class="grid">
 <div class="card"><h3>Driving</h3><p>The car is a real force-based model: engine power, brakes, drag, rolling resistance and slip-angle tyres with sliding friction. Turn in hard and tap <kbd>Space</kbd> to break the rear tyres loose and slide. Slopes pull and push the car; crests launch it. Water slows you, void edges end you (you respawn at your last safe spot, minus a bit of integrity).</p></div>
@@ -133,8 +146,6 @@ cargo run --release</pre>
 <tr><td><code>sens &lt;0.0005-0.01&gt;</code></td><td>Mouse sensitivity.</td></tr>
 </table>
 <h3>Audio</h3><table class='t'>
-<tr><td><code>musicvol &lt;0-1&gt;</code></td><td>Music volume.</td></tr>
-<tr><td><code>sfxvol &lt;0-1&gt;</code></td><td>SFX volume.</td></tr>
 <tr><td><code>track &lt;0-3|auto&gt;</code></td><td>Force music: 0 menu 1 drive 2 combat 3 port.</td></tr>
 </table>
 <h3>Cheats</h3><table class='t'>

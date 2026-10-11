@@ -2,6 +2,8 @@
 //! slip-angle tyre forces with sliding friction) extended into 3D (x,y -> x,z plane + gravity,
 //! heightfield ground following, jumps, pitch/roll from terrain normal).
 use crate::game::*;
+use crate::input::Inputs;
+use crate::players::*;
 use crate::meshgen::*;
 use crate::terrain;
 use crate::world::{Chunks, NeonMat, WorldMats};
@@ -155,35 +157,29 @@ impl Plugin for VehiclePlugin {
     }
 }
 
-fn player_car_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    ui: Res<UiBlock>,
-    ctl: Res<Control>,
-    mut q: Query<&mut Vehicle, With<PlayerCar>>,
-) {
-    let Ok(mut v) = q.single_mut() else { return };
-    let blocked = ui.0 || !ctl.in_car;
-    let f = |k: KeyCode| !blocked && keys.pressed(k);
-    let fw = f(KeyCode::KeyW) || f(KeyCode::ArrowUp);
-    let bk = f(KeyCode::KeyS) || f(KeyCode::ArrowDown);
-    let l = f(KeyCode::KeyA) || f(KeyCode::ArrowLeft);
-    let r = f(KeyCode::KeyD) || f(KeyCode::ArrowRight);
-    v.throttle = if fw { 1.0 } else if bk { -1.0 } else { 0.0 };
-    let target = (r as i32 - l as i32) as f32;
-    let rate = if target == 0.0 { 6.0 } else { 4.5 };
-    let t = 1.0 - (-rate * 1.0 / 60.0f32).exp();
-    v.steer += (target - v.steer) * t;
-    v.handbrake = f(KeyCode::Space);
-    v.boost = f(KeyCode::ShiftLeft) || f(KeyCode::ShiftRight);
-    v.brake = 0.0;
-    if !blocked && !ctl.in_car {
-        v.throttle = 0.0;
-    }
-    if blocked {
-        v.throttle = 0.0;
-        v.steer *= 0.9;
-        v.boost = false;
-        v.handbrake = true;
+fn player_car_input(inputs: Res<Inputs>, pl: Res<Pl>, mut q: Query<(&mut Vehicle, &PlayerCar)>) {
+    for (mut v, pc) in &mut q {
+        let i = pc.0;
+        if i >= MAXP {
+            continue;
+        }
+        let active = pl.s[i].alive() && pl.s[i].in_car;
+        let inp = &inputs.0[i];
+        if !active {
+            v.throttle = 0.0;
+            v.steer *= 0.9;
+            v.boost = false;
+            v.handbrake = true;
+            continue;
+        }
+        v.throttle = inp.throttle;
+        let target = inp.steer;
+        let rate = if target == 0.0 { 6.0 } else { 4.5 };
+        let t = 1.0 - (-rate * 1.0 / 60.0f32).exp();
+        v.steer += (target - v.steer) * t;
+        v.handbrake = inp.handbrake;
+        v.boost = inp.boost;
+        v.brake = 0.0;
     }
 }
 
@@ -195,7 +191,7 @@ fn vehicle_physics(
     mut fx: ResMut<FxQueue>,
     mut sfx: ResMut<SfxQueue>,
     mut shake: ResMut<Shake>,
-    mut stats: ResMut<Stats>,
+    mut pl: ResMut<Pl>,
     mut q: Query<(&mut Transform, &mut Vehicle, Option<&PlayerCar>)>,
 ) {
     let dt_full = time.delta_secs().min(1.0 / 20.0);
@@ -330,9 +326,11 @@ fn vehicle_physics(
                     let imp = -v.vel.y;
                     shake.0 = (shake.0 + imp * 0.02).min(1.0);
                     sfx.at(Sfx::Land, pos, (imp / 25.0).min(1.0));
-                    if is_player.is_some() && imp > 28.0 && !cheats.god {
-                        stats.hp -= (imp - 28.0) * 1.2;
-                        stats.hurt = 0.5;
+                    if let Some(pc) = is_player {
+                        if imp > 28.0 && !cheats.god {
+                            pl.s[pc.0].hp -= (imp - 28.0) * 1.2;
+                            pl.s[pc.0].hurt = 0.5;
+                        }
                     }
                     for _ in 0..6 {
                         fx.push(FxCmd::Dust { pos: pos - Vec3::Y * 0.4, vel: Vec3::new(((nx * 13.0).sin()) * 4.0, 3.0, ((nz * 7.0).cos()) * 4.0) });
@@ -361,9 +359,11 @@ fn vehicle_physics(
                         shake.0 = (shake.0 + 0.2).min(1.0);
                         sfx.at(Sfx::Crash, pos, (-vn / 20.0).min(1.0));
                         fx.push(FxCmd::Spark { pos: pos + nv * -1.0, dir: nv, n: 8 });
-                        if is_player.is_some() && !cheats.god {
-                            stats.hp -= (-vn - 6.0) * 0.5;
-                            stats.hurt = 0.3;
+                        if let Some(pc) = is_player {
+                            if !cheats.god {
+                                pl.s[pc.0].hp -= (-vn - 6.0) * 0.5;
+                                pl.s[pc.0].hurt = 0.3;
+                            }
                         }
                     }
                 }
@@ -400,9 +400,11 @@ fn vehicle_physics(
             v.vel = Vec3::ZERO;
             v.yaw_rate = 0.0;
             v.grounded = false;
-            if is_player.is_some() && !cheats.god {
-                stats.hp -= 15.0;
-                stats.hurt = 0.6;
+            if let Some(pc) = is_player {
+                if !cheats.god {
+                    pl.s[pc.0].hp -= 15.0;
+                    pl.s[pc.0].hurt = 0.6;
+                }
             }
         }
 

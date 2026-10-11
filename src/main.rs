@@ -7,12 +7,15 @@ mod enemies;
 mod fonts;
 mod fx;
 mod game;
+mod input;
 mod meshgen;
 mod noise;
 mod player;
+mod players;
 mod session;
 mod story;
 mod settings;
+mod split;
 mod terrain;
 mod ui;
 mod vehicle;
@@ -34,6 +37,7 @@ fn main() {
             world::WorldPlugin,
             capture::CapturePlugin,
             session::SessionPlugin,
+            input::InputPlugin,
             fx::FxPlugin,
             vehicle::VehiclePlugin,
             camera::CameraPlugin,

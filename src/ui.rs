@@ -1,7 +1,7 @@
 //! UI: loading splash (kaleidoscope shader), title menu, HUD, radar, overlays.
 use crate::audio;
-use crate::camera::CamRig;
-use crate::enemies::{Enemy, EnemyKind, Tgt};
+use crate::players::*;
+use crate::enemies::{Enemy, EnemyKind};
 use crate::game::*;
 use crate::settings::Cvars;
 use crate::story::{ending_text, Story};
@@ -51,6 +51,12 @@ impl UiMaterial for CityMat {
 }
 #[derive(Component)]
 struct IntroRoot;
+#[derive(Component)]
+pub struct HudRoot(pub usize);
+#[derive(Component)]
+struct HudSlot(usize);
+#[derive(Component)]
+struct Tagged;
 #[derive(Component)]
 struct GradLetter {
     i: usize,
@@ -119,7 +125,7 @@ impl Plugin for UiPlugin {
         bevy::asset::load_internal_asset!(app, CITY_SHADER, "shaders/city.wgsl", Shader::from_wgsl);
         app.add_plugins((UiMaterialPlugin::<LoadMat>::default(), UiMaterialPlugin::<TunnelMat>::default(), UiMaterialPlugin::<CityMat>::default()))
             .add_systems(Startup, setup_ui)
-            .add_systems(Update, (loading_update, groups, hud_texts, hud_bars, radar, overlays, fx_ui_update, grad_letters));
+            .add_systems(Update, (loading_update, groups, hud_texts, hud_bars, radar, overlays, fx_ui_update, grad_letters, tag_hud));
     }
 }
 
@@ -175,11 +181,13 @@ fn title_row(p: &mut ChildSpawnerCommands, s: &str, size: f32, font: Handle<Font
     });
 }
 
-fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>, mut tmats: ResMut<Assets<TunnelMat>>, mut cmats: ResMut<Assets<CityMat>>) {
-    // ---------------- HUD ----------------
-    commands
-        .spawn((Node { flex_direction: FlexDirection::Column, ..full() }, Group(G::Hud), Visibility::default()))
-        .with_children(|root| {
+/// Spawn one player's HUD. `cam` = the camera entity it renders on (None = the default UI camera).
+pub fn spawn_hud(commands: &mut Commands, slot: usize, cam: Option<Entity>) {
+    let mut e = commands.spawn((Node { flex_direction: FlexDirection::Column, ..full() }, Group(G::Hud), HudRoot(slot), Visibility::default()));
+    if let Some(c) = cam {
+        e.insert(UiTargetCamera(c));
+    }
+    e.with_children(|root| {
             // vignette
             root.spawn((full(), BackgroundColor(Color::srgba(1.0, 0.0, 0.0, 0.0)), Vignette));
             // top-left objective
@@ -253,6 +261,10 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>, mut tmats
                     bar(p, Bar::Hack, 260.0, 10.0, Color::srgb(0.2, 1.0, 0.4));
                 });
         });
+}
+
+fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>, mut tmats: ResMut<Assets<TunnelMat>>, mut cmats: ResMut<Assets<CityMat>>) {
+    spawn_hud(&mut commands, 0, None);
 
     // ---------------- Menu ----------------
     commands
@@ -383,15 +395,16 @@ fn groups(
     state: Res<State<AppState>>,
     loading: Res<Loading>,
     intro: Res<Intro>,
-    mut q: Query<(&Group, &mut Node)>,
+    pl: Res<Pl>,
+    mut q: Query<(&Group, &mut Node, Option<&HudRoot>)>,
 ) {
     let st = *state.get();
-    for (g, mut n) in &mut q {
+    for (g, mut n, hr) in &mut q {
         let show = match g.0 {
             G::Intro => intro.active && st == AppState::Playing,
             G::Loading => !loading.done,
             G::Menu => st == AppState::Menu && loading.done,
-            G::Hud => matches!(st, AppState::Playing | AppState::Paused | AppState::Dead) && loading.done,
+            G::Hud => matches!(st, AppState::Playing | AppState::Paused | AppState::Dead) && loading.done && hr.map_or(true, |h| pl.s[h.0.min(MAXP - 1)].active),
             G::Pause => st == AppState::Paused,
             G::Dead => st == AppState::Dead,
             G::Ending => st == AppState::Ending,
@@ -404,18 +417,16 @@ fn groups(
 fn hud_texts(
     time: Res<Time<Real>>,
     stats: Res<Stats>,
-    ctl: Res<Control>,
+    pl: Res<Pl>,
     story: Res<Story>,
-    tgt: Res<Tgt>,
-    rig: Res<CamRig>,
     cv: Res<Cvars>,
     loading: Res<Loading>,
     intro: Res<Intro>,
     mut toasts: ResMut<Toasts>,
-    car: Query<(&Transform, &Vehicle), With<PlayerCar>>,
+    car: Query<(&Vehicle, &PlayerCar)>,
     boss: Query<&Enemy>,
     mut fps: Local<f32>,
-    mut q: Query<(&mut Text, &mut TextColor, &HudText)>,
+    mut q: Query<(&mut Text, &mut TextColor, &HudText, Option<&HudSlot>)>,
     mut dlg: Query<&mut Node, With<DlgBox>>,
 ) {
     let dt = time.delta_secs();
@@ -428,22 +439,28 @@ fn hud_texts(
         let n = toasts.0.len() - 3;
         toasts.0.drain(..n);
     }
-    let (speed, car_pos) = car.single().map(|(t, v)| (v.speed, t.translation)).unwrap_or((0.0, Vec3::ZERO));
+    let mut speeds = [0.0f32; MAXP];
+    for (v, p) in &car {
+        speeds[p.0.min(MAXP - 1)] = v.speed;
+    }
     let bossv = boss.iter().find(|e| e.kind == EnemyKind::Boss);
-    if let Ok(mut n) = dlg.single_mut() {
+    for mut n in &mut dlg {
         n.display = if story.cur.is_some() { Display::Flex } else { Display::None };
     }
     let blink = (time.elapsed_secs() * 3.0).sin() * 0.5 + 0.5;
-    for (mut text, mut color, kind) in &mut q {
+    for (mut text, mut color, kind, hs) in &mut q {
+        let slot = hs.map_or(0, |h| h.0.min(MAXP - 1));
+        let sl = &pl.s[slot];
+        let ctl_in_car = sl.in_car;
         match kind {
-            HudText::Speed => text.0 = if ctl.in_car { format!("{:>3} KM/H", (speed * 3.6) as i32) } else { "ON FOOT".into() },
-            HudText::Hp => text.0 = format!("INTEGRITY {:>3}", stats.hp.max(0.0) as i32),
+            HudText::Speed => text.0 = if sl.dead_t > 0.0 { "DOWN".into() } else if ctl_in_car { format!("{:>3} KM/H", (speeds[slot] * 3.6) as i32) } else { "ON FOOT".into() },
+            HudText::Hp => text.0 = format!("{}INTEGRITY {:>3}", if pl.count() > 1 { format!("P{} ", slot + 1) } else { String::new() }, sl.hp.max(0.0) as i32),
             HudText::Ammo => {
-                text.0 = if ctl.in_car {
-                    format!("CANNONS  ROCKETS x{}", stats.ammo[3])
+                text.0 = if ctl_in_car {
+                    format!("CANNONS  ROCKETS x{}", sl.ammo[3])
                 } else {
-                    let a = if stats.cur == 0 { "INF".to_string() } else { stats.ammo[stats.cur].to_string() };
-                    format!("[{}] {}  {}", stats.cur + 1, WEAPON_NAMES[stats.cur], a)
+                    let a = if sl.cur == 0 { "INF".to_string() } else { sl.ammo[sl.cur].to_string() };
+                    format!("[{}] {}  {}", sl.cur + 1, WEAPON_NAMES[sl.cur], a)
                 }
             }
             HudText::Chapter => text.0 = story.chapter.clone(),
@@ -451,10 +468,10 @@ fn hud_texts(
             HudText::Compass => {
                 text.0 = match story.target {
                     Some(tp) => {
-                        let rel = tp - tgt.pos;
+                        let rel = tp - sl.pos;
                         let d = Vec2::new(rel.x, rel.z).length();
-                        let fwd = Vec2::new(-rig.yaw.sin(), -rig.yaw.cos());
-                        let right = Vec2::new(rig.yaw.cos(), -rig.yaw.sin());
+                        let fwd = Vec2::new(-sl.rig.yaw.sin(), -sl.rig.yaw.cos());
+                        let right = Vec2::new(sl.rig.yaw.cos(), -sl.rig.yaw.sin());
                         let r2 = Vec2::new(rel.x, rel.z).normalize_or_zero();
                         let ang = r2.dot(right).atan2(r2.dot(fwd));
                         let dir = if ang.abs() < 0.3 { "AHEAD" } else if ang.abs() > 2.5 { "BEHIND" } else if ang > 0.0 { if ang > 1.3 { "HARD RIGHT >>" } else { "RIGHT >" } } else if ang < -1.3 { "<< HARD LEFT" } else { "< LEFT" };
@@ -464,7 +481,7 @@ fn hud_texts(
                 }
             }
             HudText::Score => text.0 = format!("SCORE {}   KILLS {}", stats.score, stats.kills),
-            HudText::Fps => text.0 = if cv.show_fps { format!("{:.0} fps", *fps) } else { String::new() },
+            HudText::Fps => text.0 = if cv.show_fps && slot == 0 { format!("{:.0} fps", *fps) } else { String::new() },
             HudText::DlgWho => {
                 if let Some((w, _, _, _)) = &story.cur {
                     text.0 = w.clone();
@@ -487,13 +504,19 @@ fn hud_texts(
             }
             HudText::Boss => text.0 = if bossv.is_some() { "THE WARDEN".into() } else { String::new() },
             HudText::Hint => {
+                let key = if slot == 0 { "F" } else { "Y" };
+                let hackkey = if slot == 0 { "E" } else { "X" };
                 let mut h = String::new();
-                if !ctl.in_car && car_pos != Vec3::ZERO && car_pos.distance(tgt.pos) < 6.0 {
-                    h = "[F] ENTER CAR".into();
-                }
-                if let Some(tp) = story.terminal {
-                    if !ctl.in_car && tp.distance(tgt.pos) < 8.0 && story.step == crate::story::Step::Hack {
-                        h = "[HOLD E] HACK TERMINAL".into();
+                if sl.dead_t > 0.0 {
+                    h = format!("REBOOTING IN {:.0}", sl.dead_t.ceil());
+                } else {
+                    if !sl.in_car && sl.car_pos != Vec3::ZERO && sl.car_pos.distance(sl.pos) < 6.0 {
+                        h = format!("[{}] ENTER CAR", key);
+                    }
+                    if let Some(tp) = story.terminal {
+                        if !sl.in_car && tp.distance(sl.pos) < 8.0 && story.step == crate::story::Step::Hack {
+                            h = format!("[HOLD {}] HACK TERMINAL", hackkey);
+                        }
                     }
                 }
                 text.0 = h;
@@ -532,51 +555,55 @@ fn hud_texts(
 }
 
 fn hud_bars(
-    stats: Res<Stats>,
+    pl: Res<Pl>,
     story: Res<Story>,
-    ctl: Res<Control>,
-    car: Query<&Vehicle, With<PlayerCar>>,
+    car: Query<(&Vehicle, &PlayerCar)>,
     boss: Query<&Enemy>,
     loading: Res<Loading>,
-    mut q: Query<(&mut Node, &Bar), Without<BarBox>>,
-    mut boxes: Query<(&mut Node, &BarBox), Without<Bar>>,
+    mut q: Query<(&mut Node, &Bar, Option<&HudSlot>), Without<BarBox>>,
+    mut boxes: Query<(&mut Node, &BarBox, Option<&HudSlot>), Without<Bar>>,
 ) {
-    let bf = car.single().map(|v| v.boost_fuel).unwrap_or(0.0);
+    let mut boost = [0.0f32; MAXP];
+    for (v, p) in &car {
+        boost[p.0.min(MAXP - 1)] = v.boost_fuel;
+    }
     let bossv = boss.iter().find(|e| e.kind == EnemyKind::Boss);
     let hack_on = story.step == crate::story::Step::Hack;
-    let calc = |b: &Bar| match b {
-        Bar::Hp => (stats.hp / stats.max_hp, true),
-        Bar::Boost => (bf, ctl.in_car),
-        Bar::Hack => (story.hack, hack_on),
-        Bar::Boss => (bossv.map(|e| e.hp / e.max).unwrap_or(0.0), bossv.is_some()),
+    let calc = |b: &Bar, slot: usize| {
+        let sl = &pl.s[slot];
+        match b {
+            Bar::Hp => (sl.hp / sl.max_hp, true),
+            Bar::Boost => (boost[slot], sl.in_car),
+            Bar::Hack => (story.hack, hack_on),
+            Bar::Boss => (bossv.map(|e| e.hp / e.max).unwrap_or(0.0), bossv.is_some()),
             Bar::Load => (loading.progress, true),
+        }
     };
-    for (mut n, b) in &mut q {
-        n.width = Val::Percent((calc(b).0 * 100.0).clamp(0.0, 100.0));
+    for (mut n, b, hs) in &mut q {
+        n.width = Val::Percent((calc(b, hs.map_or(0, |h| h.0.min(MAXP - 1))).0 * 100.0).clamp(0.0, 100.0));
     }
-    for (mut n, b) in &mut boxes {
-        n.display = if calc(&b.0).1 { Display::Flex } else { Display::None };
+    for (mut n, b, hs) in &mut boxes {
+        n.display = if calc(&b.0, hs.map_or(0, |h| h.0.min(MAXP - 1))).1 { Display::Flex } else { Display::None };
     }
 }
 
-fn radar(
-    tgt: Res<Tgt>,
-    rig: Res<CamRig>,
-    enemies: Query<(&Transform, &Enemy)>,
-    mut dots: Query<(&RadarDot, &mut Node)>,
-) {
-    let fwd = Vec2::new(-rig.yaw.sin(), -rig.yaw.cos());
-    let right = Vec2::new(rig.yaw.cos(), -rig.yaw.sin());
+fn radar(pl: Res<Pl>, enemies: Query<(&Transform, &Enemy)>, mut dots: Query<(&RadarDot, &mut Node, Option<&HudSlot>)>) {
     let range = 220.0;
-    let mut list: Vec<Vec2> = vec![];
-    for (t, _) in &enemies {
-        let rel = Vec2::new(t.translation.x - tgt.pos.x, t.translation.z - tgt.pos.z);
-        let p = Vec2::new(rel.dot(right), rel.dot(fwd)) / range;
-        let l = p.length();
-        list.push(if l > 1.0 { p / l } else { p });
+    let mut lists: [Vec<Vec2>; MAXP] = [vec![], vec![]];
+    for i in 0..MAXP {
+        let sl = &pl.s[i];
+        let fwd = Vec2::new(-sl.rig.yaw.sin(), -sl.rig.yaw.cos());
+        let right = Vec2::new(sl.rig.yaw.cos(), -sl.rig.yaw.sin());
+        for (t, _) in &enemies {
+            let rel = Vec2::new(t.translation.x - sl.pos.x, t.translation.z - sl.pos.z);
+            let p = Vec2::new(rel.dot(right), rel.dot(fwd)) / range;
+            let l = p.length();
+            lists[i].push(if l > 1.0 { p / l } else { p });
+        }
     }
-    for (d, mut n) in &mut dots {
-        if let Some(p) = list.get(d.0) {
+    for (d, mut n, hs) in &mut dots {
+        let slot = hs.map_or(0, |h| h.0.min(MAXP - 1));
+        if let Some(p) = lists[slot].get(d.0) {
             n.display = Display::Flex;
             n.left = Val::Px(70.0 + p.x * 66.0);
             n.top = Val::Px(70.0 - p.y * 66.0);
@@ -586,9 +613,25 @@ fn radar(
     }
 }
 
-fn overlays(stats: Res<Stats>, mut v: Query<&mut BackgroundColor, With<Vignette>>) {
-    for mut b in &mut v {
-        b.0 = Color::srgba(1.0, 0.0, 0.1, (stats.hurt * 0.55).min(0.5));
+fn overlays(pl: Res<Pl>, mut v: Query<(&mut BackgroundColor, Option<&HudSlot>), With<Vignette>>) {
+    for (mut b, hs) in &mut v {
+        let sl = &pl.s[hs.map_or(0, |h| h.0.min(MAXP - 1))];
+        let down = if sl.dead_t > 0.0 { 0.35 } else { 0.0 };
+        b.0 = Color::srgba(1.0, 0.0, 0.1, (sl.hurt * 0.55 + down).min(0.55));
+    }
+}
+
+/// Tag every descendant of a HUD root with its player slot (so one HUD layout serves both players).
+fn tag_hud(mut commands: Commands, roots: Query<(Entity, &HudRoot), Without<Tagged>>, children: Query<&Children>) {
+    for (e, r) in &roots {
+        let mut any = false;
+        for d in children.iter_descendants(e) {
+            commands.entity(d).insert(HudSlot(r.0));
+            any = true;
+        }
+        if any {
+            commands.entity(e).insert(Tagged);
+        }
     }
 }
 

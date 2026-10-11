@@ -1,14 +1,14 @@
 //! Player weapons (on foot + car cannons), projectiles with tracers, hit detection, explosions.
-use crate::camera::AimInfo;
 use crate::enemies::Enemy;
 use crate::fx::FxAssets;
 use crate::game::*;
+use crate::input::Inputs;
 use crate::noise::Rng;
 use crate::player::Walker;
+use crate::players::*;
 use crate::terrain;
 use crate::vehicle::Vehicle;
 use crate::world::Chunks;
-use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::prelude::*;
 
@@ -29,19 +29,6 @@ pub struct Bullet {
     pub splash: f32,
     pub rocket: bool,
     pub tick: f32,
-}
-
-pub fn hurt_player(stats: &mut Stats, cheats: &Cheats, amount: f32, in_car: bool, sfx: &mut SfxQueue) {
-    if cheats.god || amount <= 0.0 {
-        return;
-    }
-    let a = if in_car { amount * 0.6 } else { amount };
-    stats.hp -= a;
-    if stats.hurt <= 0.05 {
-        sfx.play(Sfx::Hurt);
-    }
-    stats.hurt = 0.45;
-    stats.combat = 8.0;
 }
 
 pub struct WeaponsPlugin;
@@ -88,153 +75,151 @@ pub fn spawn_bullet(
 fn fire_input(
     mut commands: Commands,
     time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    scroll: Res<AccumulatedMouseScroll>,
-    ui: Res<UiBlock>,
-    ctl: Res<Control>,
+    inputs: Res<Inputs>,
     cheats: Res<Cheats>,
-    aim: Res<AimInfo>,
     fxa: Res<FxAssets>,
     mut stats: ResMut<Stats>,
+    mut pl: ResMut<Pl>,
     mut out: Out,
     mut seed: Local<u64>,
-    mut side: Local<bool>,
-    car: Query<(&Transform, &Vehicle), With<PlayerCar>>,
-    pl: Query<(&Transform, &Walker), (With<Player>, Without<PlayerCar>)>,
+    mut side: Local<[bool; MAXP]>,
+    car: Query<(&Transform, &Vehicle, &PlayerCar)>,
+    walkers: Query<(&Transform, &Walker, &Player), Without<PlayerCar>>,
 ) {
     let dt = time.delta_secs();
-    stats.cooldown = (stats.cooldown - dt).max(0.0);
-    stats.combat = (stats.combat - dt).max(0.0);
     stats.time += dt;
-    if ui.0 {
-        return;
-    }
     *seed = seed.wrapping_add(0x9E37);
     let mut rng = Rng::new(*seed ^ time.elapsed_secs_f64().to_bits());
-    // weapon switch
-    for (i, k) in [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4].iter().enumerate() {
-        if keys.just_pressed(*k) {
-            if stats.owned[i] {
-                stats.cur = i;
+    let spread_dir = |d: Vec3, s: f32, rng: &mut Rng| (d + Vec3::new(rng.range(-s, s), rng.range(-s, s), rng.range(-s, s))).normalize();
+    for i in 0..MAXP {
+        {
+            let s = &mut pl.s[i];
+            s.cooldown = (s.cooldown - dt).max(0.0);
+            s.combat = (s.combat - dt).max(0.0);
+        }
+        if !pl.s[i].alive() {
+            continue;
+        }
+        let inp = inputs.0[i].clone();
+        // weapon switch
+        if let Some(w) = inp.weapon {
+            if pl.s[i].owned[w] {
+                pl.s[i].cur = w;
                 out.sfx.play(Sfx::Blip);
             } else {
-                out.toasts.say(format!("{} not found yet", crate::game::WEAPON_NAMES[i]));
+                out.toasts.say(format!("{} not found yet", WEAPON_NAMES[w]));
             }
         }
-    }
-    if scroll.delta.y != 0.0 {
-        let dir = if scroll.delta.y > 0.0 { 1i32 } else { -1 };
-        let mut c = stats.cur as i32;
-        for _ in 0..NUM_WEAPONS {
-            c = (c + dir).rem_euclid(NUM_WEAPONS as i32);
-            if stats.owned[c as usize] {
-                break;
-            }
-        }
-        stats.cur = c as usize;
-    }
-    let lmb = mouse.pressed(MouseButton::Left);
-    let rmb = mouse.pressed(MouseButton::Right);
-    if stats.cooldown > 0.0 {
-        return;
-    }
-    let spread_dir = |d: Vec3, s: f32, rng: &mut Rng| (d + Vec3::new(rng.range(-s, s), rng.range(-s, s), rng.range(-s, s))).normalize();
-    if ctl.in_car {
-        let Ok((ct, v)) = car.single() else { return };
-        let aim_dir_from = |o: Vec3| {
-            let d = (aim.point - o).normalize_or_zero();
-            if d.dot(v.fwd()) < 0.2 || aim.point.distance(o) < 8.0 { v.fwd() } else { d }
-        };
-        if lmb {
-            *side = !*side;
-            let sx = if *side { 0.75 } else { -0.75 };
-            let o = ct.translation + v.right() * sx + v.fwd() * 2.0 + Vec3::Y * 0.7;
-            let d = spread_dir(aim_dir_from(o), 0.008, &mut rng);
-            let vel_add = v.speed.max(0.0);
-            spawn_bullet(&mut commands, &fxa, o, d, 230.0 + vel_add * 0.5, 9.0, true, 5, 0.0, 1.6);
-            out.fx.push(FxCmd::Muzzle { pos: o + d, dir: d, col: 0 });
-            out.sfx.play(Sfx::Pistol);
-            stats.cooldown = 0.075;
-            out.shake.0 = (out.shake.0 + 0.02).min(1.0);
-            stats.combat = 6.0;
-        } else if rmb && (stats.ammo[3] > 0 || cheats.infammo) {
-            let o = ct.translation + v.fwd() * 2.0 + Vec3::Y * 0.9;
-            let d = aim_dir_from(o);
-            spawn_bullet(&mut commands, &fxa, o, d, 120.0 + v.speed, 85.0, true, 3, 9.0, 4.0);
-            out.fx.push(FxCmd::Muzzle { pos: o + d, dir: d, col: 3 });
-            out.sfx.play(Sfx::Rocket);
-            if !cheats.infammo {
-                stats.ammo[3] -= 1;
-            }
-            stats.cooldown = 0.9;
-            out.shake.0 = (out.shake.0 + 0.15).min(1.0);
-            stats.combat = 8.0;
-        } else if rmb {
-            out.sfx.play(Sfx::Deny);
-            stats.cooldown = 0.4;
-        }
-    } else if lmb {
-        let Ok((pt, w)) = pl.single() else { return };
-        let facing = Quat::from_rotation_y(w.yaw);
-        let o = pt.translation + Vec3::Y * 1.38 + facing * Vec3::new(0.36, 0.0, -0.9);
-        let d0 = {
-            let d = (aim.point - o).normalize_or_zero();
-            if aim.point.distance(o) < 3.0 || d == Vec3::ZERO { aim.dir } else { d }
-        };
-        let cur = stats.cur;
-        let has_ammo = cur == 0 || stats.ammo[cur] > 0 || cheats.infammo;
-        if !has_ammo {
-            out.sfx.play(Sfx::Deny);
-            stats.cooldown = 0.3;
-            out.toasts.say("OUT OF AMMO");
-            stats.cur = 0;
-            return;
-        }
-        let spend = |stats: &mut Stats| {
-            if cur != 0 && !cheats.infammo {
-                stats.ammo[cur] -= 1;
-            }
-        };
-        match cur {
-            0 => {
-                let d = spread_dir(d0, 0.003, &mut rng);
-                spawn_bullet(&mut commands, &fxa, o, d, 320.0, 18.0, true, 0, 0.0, 1.5);
-                out.fx.push(FxCmd::Muzzle { pos: o + d * 0.4, dir: d, col: 0 });
-                out.sfx.play(Sfx::Pistol);
-                stats.cooldown = 0.2;
-                out.shake.0 = (out.shake.0 + 0.03).min(1.0);
-            }
-            1 => {
-                let d = spread_dir(d0, 0.02, &mut rng);
-                spawn_bullet(&mut commands, &fxa, o, d, 280.0, 8.0, true, 1, 0.0, 1.3);
-                out.fx.push(FxCmd::Muzzle { pos: o + d * 0.4, dir: d, col: 1 });
-                out.sfx.play(Sfx::Smg);
-                spend(&mut stats);
-                stats.cooldown = 0.065;
-                out.shake.0 = (out.shake.0 + 0.02).min(1.0);
-            }
-            2 => {
-                for _ in 0..9 {
-                    let d = spread_dir(d0, 0.06, &mut rng);
-                    spawn_bullet(&mut commands, &fxa, o, d, 260.0, 11.0, true, 2, 0.0, 0.7);
+        if inp.weapon_step != 0 {
+            let mut c = pl.s[i].cur as i32;
+            for _ in 0..NUM_WEAPONS {
+                c = (c + inp.weapon_step).rem_euclid(NUM_WEAPONS as i32);
+                if pl.s[i].owned[c as usize] {
+                    break;
                 }
-                out.fx.push(FxCmd::Muzzle { pos: o + d0 * 0.5, dir: d0, col: 2 });
-                out.sfx.play(Sfx::Shotgun);
-                spend(&mut stats);
-                stats.cooldown = 0.85;
-                out.shake.0 = (out.shake.0 + 0.2).min(1.0);
             }
-            _ => {
-                spawn_bullet(&mut commands, &fxa, o, d0, 115.0, 90.0, true, 3, 9.0, 4.0);
-                out.fx.push(FxCmd::Muzzle { pos: o + d0 * 0.5, dir: d0, col: 3 });
-                out.sfx.play(Sfx::Rocket);
-                spend(&mut stats);
-                stats.cooldown = 1.05;
-                out.shake.0 = (out.shake.0 + 0.2).min(1.0);
-            }
+            pl.s[i].cur = c as usize;
         }
-        stats.combat = 8.0;
+        if pl.s[i].cooldown > 0.0 {
+            continue;
+        }
+        let aim = pl.s[i].aim.clone();
+        let in_car = pl.s[i].in_car;
+        if in_car {
+            let Some((ct, v, _)) = car.iter().find(|(_, _, p)| p.0 == i) else { continue };
+            let aim_dir_from = |o: Vec3| {
+                let d = (aim.point - o).normalize_or_zero();
+                if d.dot(v.fwd()) < 0.2 || aim.point.distance(o) < 8.0 { v.fwd() } else { d }
+            };
+            if inp.fire {
+                side[i] = !side[i];
+                let sx = if side[i] { 0.75 } else { -0.75 };
+                let o = ct.translation + v.right() * sx + v.fwd() * 2.0 + Vec3::Y * 0.7;
+                let d = spread_dir(aim_dir_from(o), 0.008, &mut rng);
+                spawn_bullet(&mut commands, &fxa, o, d, 230.0 + v.speed.max(0.0) * 0.5, 9.0, true, 5, 0.0, 1.6);
+                out.fx.push(FxCmd::Muzzle { pos: o + d, dir: d, col: 0 });
+                out.sfx.play(Sfx::Pistol);
+                pl.s[i].cooldown = 0.075;
+                out.shake.0 = (out.shake.0 + 0.02).min(1.0);
+                pl.s[i].combat = 6.0;
+            } else if inp.alt && (pl.s[i].ammo[3] > 0 || cheats.infammo) {
+                let o = ct.translation + v.fwd() * 2.0 + Vec3::Y * 0.9;
+                let d = aim_dir_from(o);
+                spawn_bullet(&mut commands, &fxa, o, d, 120.0 + v.speed, 85.0, true, 3, 9.0, 4.0);
+                out.fx.push(FxCmd::Muzzle { pos: o + d, dir: d, col: 3 });
+                out.sfx.play(Sfx::Rocket);
+                if !cheats.infammo {
+                    pl.s[i].ammo[3] -= 1;
+                }
+                pl.s[i].cooldown = 0.9;
+                out.shake.0 = (out.shake.0 + 0.15).min(1.0);
+                pl.s[i].combat = 8.0;
+            } else if inp.alt {
+                out.sfx.play(Sfx::Deny);
+                pl.s[i].cooldown = 0.4;
+            }
+        } else if inp.fire {
+            let Some((pt, w, _)) = walkers.iter().find(|(_, _, p)| p.0 == i) else { continue };
+            let facing = Quat::from_rotation_y(w.yaw);
+            let o = pt.translation + Vec3::Y * 1.38 + facing * Vec3::new(0.36, 0.0, -0.9);
+            let d0 = {
+                let d = (aim.point - o).normalize_or_zero();
+                if aim.point.distance(o) < 3.0 || d == Vec3::ZERO { aim.dir } else { d }
+            };
+            let cur = pl.s[i].cur;
+            let has_ammo = cur == 0 || pl.s[i].ammo[cur] > 0 || cheats.infammo;
+            if !has_ammo {
+                out.sfx.play(Sfx::Deny);
+                pl.s[i].cooldown = 0.3;
+                out.toasts.say("OUT OF AMMO");
+                pl.s[i].cur = 0;
+                continue;
+            }
+            let mut spend = |pl: &mut Pl| {
+                if cur != 0 && !cheats.infammo {
+                    pl.s[i].ammo[cur] -= 1;
+                }
+            };
+            match cur {
+                0 => {
+                    let d = spread_dir(d0, 0.003, &mut rng);
+                    spawn_bullet(&mut commands, &fxa, o, d, 320.0, 18.0, true, 0, 0.0, 1.5);
+                    out.fx.push(FxCmd::Muzzle { pos: o + d * 0.4, dir: d, col: 0 });
+                    out.sfx.play(Sfx::Pistol);
+                    pl.s[i].cooldown = 0.2;
+                    out.shake.0 = (out.shake.0 + 0.03).min(1.0);
+                }
+                1 => {
+                    let d = spread_dir(d0, 0.02, &mut rng);
+                    spawn_bullet(&mut commands, &fxa, o, d, 280.0, 8.0, true, 1, 0.0, 1.3);
+                    out.fx.push(FxCmd::Muzzle { pos: o + d * 0.4, dir: d, col: 1 });
+                    out.sfx.play(Sfx::Smg);
+                    spend(&mut pl);
+                    pl.s[i].cooldown = 0.065;
+                    out.shake.0 = (out.shake.0 + 0.02).min(1.0);
+                }
+                2 => {
+                    for _ in 0..9 {
+                        let d = spread_dir(d0, 0.06, &mut rng);
+                        spawn_bullet(&mut commands, &fxa, o, d, 260.0, 11.0, true, 2, 0.0, 0.7);
+                    }
+                    out.fx.push(FxCmd::Muzzle { pos: o + d0 * 0.5, dir: d0, col: 2 });
+                    out.sfx.play(Sfx::Shotgun);
+                    spend(&mut pl);
+                    pl.s[i].cooldown = 0.85;
+                    out.shake.0 = (out.shake.0 + 0.2).min(1.0);
+                }
+                _ => {
+                    spawn_bullet(&mut commands, &fxa, o, d0, 115.0, 90.0, true, 3, 9.0, 4.0);
+                    out.fx.push(FxCmd::Muzzle { pos: o + d0 * 0.5, dir: d0, col: 3 });
+                    out.sfx.play(Sfx::Rocket);
+                    spend(&mut pl);
+                    pl.s[i].cooldown = 1.05;
+                    out.shake.0 = (out.shake.0 + 0.2).min(1.0);
+                }
+            }
+            pl.s[i].combat = 8.0;
+        }
     }
 }
 
@@ -251,18 +236,16 @@ fn bullets(
     time: Res<Time>,
     chunks: Res<Chunks>,
     cheats: Res<Cheats>,
-    ctl: Res<Control>,
-    mut stats: ResMut<Stats>,
+    mut pl: ResMut<Pl>,
     mut fx: ResMut<FxQueue>,
     mut sfx: ResMut<SfxQueue>,
     mut bq: Query<(Entity, &mut Transform, &mut Bullet)>,
     mut enemies: Query<(&Transform, &mut Enemy), Without<Bullet>>,
-    focus: Res<crate::world::Focus>,
 ) {
     let dt = time.delta_secs().min(0.05);
     let mut booms: Vec<(Vec3, f32, f32, bool)> = vec![];
-    let target = focus.0;
-    let player_r = if ctl.in_car { 2.0 } else { 1.0 };
+    // snapshot of alive players: (slot, centre, radius)
+    let targets: Vec<(usize, Vec3, f32)> = pl.s.iter().enumerate().filter(|(_, s)| s.alive()).map(|(i, s)| (i, s.pos, if s.in_car { 2.0 } else { 1.0 })).collect();
     for (e, mut tr, mut b) in &mut bq {
         b.life -= dt;
         if b.life <= 0.0 {
@@ -275,46 +258,49 @@ fn bullets(
         let p0 = tr.translation;
         let steps = 3;
         let mut p = p0;
-        let mut hit: Option<(Vec3, Option<Entity>)> = None;
+        let mut hit: Option<Vec3> = None;
         'march: for i in 0..steps {
             let np = p0 + b.vel * dt * ((i + 1) as f32 / steps as f32);
             if b.friendly {
                 for (et, en) in enemies.iter() {
                     let c = et.translation + Vec3::Y * (en.radius * 0.5);
                     if seg_sphere(p, np, c, en.radius) {
-                        hit = Some((np, None));
+                        hit = Some(np);
                         break 'march;
                     }
                 }
-            } else if seg_sphere(p, np, target, player_r) {
-                hit = Some((np, None));
-                break 'march;
+            } else {
+                for (_, c, r) in &targets {
+                    if seg_sphere(p, np, *c, *r) {
+                        hit = Some(np);
+                        break 'march;
+                    }
+                }
             }
             if let Some(g) = terrain::ground(np.x, np.z) {
                 if np.y < g {
-                    hit = Some((np, None));
+                    hit = Some(np);
                     break 'march;
                 }
             }
             if np.y < terrain::rim_y(np.x, np.z) - 400.0 {
                 b.life = 0.0;
             }
-            if let Some((_, _)) = chunks.collide(Vec2::new(np.x, np.z), 0.3) {
+            if chunks.collide(Vec2::new(np.x, np.z), 0.3).is_some() {
                 if let Some(g) = terrain::ground(np.x, np.z) {
                     if np.y < g + 10.0 {
-                        hit = Some((np, None));
+                        hit = Some(np);
                         break 'march;
                     }
                 }
             }
             p = np;
         }
-        if let Some((hp, _)) = hit {
+        if let Some(hp) = hit {
             fx.push(FxCmd::Spark { pos: hp, dir: -b.vel.normalize_or_zero(), n: 6 });
             if b.splash > 0.0 {
                 booms.push((hp, b.splash, b.dmg, b.friendly));
             } else if b.friendly {
-                // direct hit damage
                 for (et, mut en) in enemies.iter_mut() {
                     let c = et.translation + Vec3::Y * (en.radius * 0.5);
                     if c.distance(hp) <= en.radius + 1.0 {
@@ -324,8 +310,13 @@ fn bullets(
                         break;
                     }
                 }
-            } else if hp.distance(target) <= player_r + 1.0 {
-                hurt_player(&mut stats, &cheats, b.dmg, ctl.in_car, &mut sfx);
+            } else {
+                for (i, c, r) in &targets {
+                    if hp.distance(*c) <= *r + 1.0 {
+                        hurt(&mut pl.s[*i], cheats.god, b.dmg, &mut sfx);
+                        break;
+                    }
+                }
             }
             commands.entity(e).despawn();
             continue;
@@ -349,14 +340,18 @@ fn bullets(
                 }
             }
             // self damage when close
-            let d = target.distance(pos);
-            if d < r * 0.6 {
-                hurt_player(&mut stats, &cheats, dmg * 0.2 * (1.0 - d / (r * 0.6)), ctl.in_car, &mut sfx);
+            for (i, c, _) in &targets {
+                let d = c.distance(pos);
+                if d < r * 0.6 {
+                    hurt(&mut pl.s[*i], cheats.god, dmg * 0.2 * (1.0 - d / (r * 0.6)), &mut sfx);
+                }
             }
         } else {
-            let d = target.distance(pos);
-            if d < r {
-                hurt_player(&mut stats, &cheats, dmg * (1.0 - d / r), ctl.in_car, &mut sfx);
+            for (i, c, _) in &targets {
+                let d = c.distance(pos);
+                if d < r {
+                    hurt(&mut pl.s[*i], cheats.god, dmg * (1.0 - d / r), &mut sfx);
+                }
             }
         }
     }

@@ -73,10 +73,14 @@ pub struct WorldMats {
 }
 
 #[derive(Resource, Default)]
-pub struct Focus(pub Vec3);
+pub struct Focus(pub Vec3, pub Option<Vec3>);
 
+/// The player-1 camera (sky/clouds/motes follow it).
 #[derive(Component)]
 pub struct MainCam;
+/// Every player camera; the value is the player slot.
+#[derive(Component)]
+pub struct CamSlot(pub usize);
 #[derive(Component)]
 pub struct SkyDome;
 #[derive(Component)]
@@ -157,6 +161,28 @@ impl Plugin for WorldPlugin {
     }
 }
 
+pub fn spawn_game_camera(commands: &mut Commands, slot: usize) -> Entity {
+    commands
+        .spawn((
+            CamSlot(slot),
+            Camera3d::default(),
+            Camera { hdr: true, order: slot as isize, ..default() },
+            Projection::Perspective(PerspectiveProjection { fov: 70f32.to_radians(), near: 0.1, far: 9000.0, ..default() }),
+            Tonemapping::TonyMcMapface,
+            Bloom { intensity: 0.28, ..Bloom::NATURAL },
+            Msaa::Off,
+            Fxaa::default(),
+            DistanceFog {
+                color: FOG_COLOR,
+                directional_light_color: Color::srgb(1.0, 0.5, 0.35),
+                directional_light_exponent: 24.0,
+                falloff: FogFalloff::from_visibility_colors(900.0, Color::srgb(0.22, 0.05, 0.32), Color::srgb(1.0, 0.32, 0.45)),
+            },
+            Transform::from_xyz(0.0, 80.0, 0.0),
+        ))
+        .id()
+}
+
 fn setup_world(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -182,24 +208,9 @@ fn setup_world(
     };
     commands.insert_resource(mats);
 
-    // camera --------------------------------------------------------------
-    commands.spawn((
-        MainCam,
-        Camera3d::default(),
-        Camera { hdr: true, ..default() },
-        Projection::Perspective(PerspectiveProjection { fov: 70f32.to_radians(), near: 0.1, far: 9000.0, ..default() }),
-        Tonemapping::TonyMcMapface,
-        Bloom { intensity: 0.28, ..Bloom::NATURAL },
-        Msaa::Off,
-        Fxaa::default(),
-        DistanceFog {
-            color: FOG_COLOR,
-            directional_light_color: Color::srgb(1.0, 0.5, 0.35),
-            directional_light_exponent: 24.0,
-            falloff: FogFalloff::from_visibility_colors(900.0, Color::srgb(0.22, 0.05, 0.32), Color::srgb(1.0, 0.32, 0.45)),
-        },
-        Transform::from_xyz(0.0, 80.0, 0.0),
-    ));
+    // camera (player 1; player 2's is spawned on join)
+    let c = spawn_game_camera(&mut commands, 0);
+    commands.entity(c).insert((MainCam, bevy::ui::IsDefaultUiCamera));
 
     // lights --------------------------------------------------------------
     commands.insert_resource(AmbientLight { color: Color::srgb(0.35, 0.15, 0.8), brightness: 70.0, ..default() });
@@ -382,7 +393,7 @@ fn animate_motes(time: Res<Time>, cam: Query<&Transform, (With<MainCam>, Without
 
 fn apply_cvars(
     cv: Res<Cvars>,
-    mut cam: Query<(&mut Bloom, &mut DistanceFog, &mut Projection), With<MainCam>>,
+    mut cam: Query<(&mut Bloom, &mut DistanceFog, &mut Projection), With<CamSlot>>,
 ) {
     if !cv.is_changed() {
         return;
@@ -455,18 +466,25 @@ fn stream_chunks(
         }
     }
     // request needed
-    let (fx, fz) = ((focus.0.x / CHUNK).floor() as i32, (focus.0.z / CHUNK).floor() as i32);
+    let mut foci = vec![focus.0];
+    if let Some(f) = focus.1 {
+        foci.push(f);
+    }
+    let cells: Vec<(i32, i32)> = foci.iter().map(|f| ((f.x / CHUNK).floor() as i32, (f.z / CHUNK).floor() as i32)).collect();
     let r = cv.view_radius;
     let mut want: Vec<((i32, i32), i32)> = vec![];
-    for dx in -r..=r {
-        for dz in -r..=r {
-            let d2 = dx * dx + dz * dz;
-            if d2 <= r * r + 1 {
-                want.push(((fx + dx, fz + dz), d2));
+    for &(fx, fz) in &cells {
+        for dx in -r..=r {
+            for dz in -r..=r {
+                let d2 = dx * dx + dz * dz;
+                if d2 <= r * r + 1 {
+                    want.push(((fx + dx, fz + dz), d2));
+                }
             }
         }
     }
     want.sort_by_key(|w| w.1);
+    want.dedup_by_key(|w| w.0);
     let pool = AsyncComputeTaskPool::get();
     for (k, _) in &want {
         if chunks.pending.len() >= 8 {
@@ -482,10 +500,10 @@ fn stream_chunks(
     let far: Vec<(i32, i32)> = chunks
         .loaded
         .keys()
-        .filter(|(x, z)| {
+        .filter(|(x, z)| cells.iter().all(|(fx, fz)| {
             let (dx, dz) = (x - fx, z - fz);
             dx * dx + dz * dz > (r + 2) * (r + 2)
-        })
+        }))
         .copied()
         .collect();
     for k in far {
@@ -495,7 +513,9 @@ fn stream_chunks(
         chunks.colliders.remove(&k);
     }
     chunks.pending.retain(|(x, z), _| {
-        let (dx, dz) = (x - fx, z - fz);
-        dx * dx + dz * dz <= (r + 3) * (r + 3)
+        cells.iter().any(|(fx, fz)| {
+            let (dx, dz) = (x - fx, z - fz);
+            dx * dx + dz * dz <= (r + 3) * (r + 3)
+        })
     });
 }

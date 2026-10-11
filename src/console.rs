@@ -1,8 +1,9 @@
 //! In-game developer console (` key): UI, input capture, and applying parsed actions.
 use crate::audio::MusicCtl;
 use crate::commands::*;
-use crate::enemies::{spawn_enemy, Director, Enemy, EnemyKind, Tgt};
+use crate::enemies::{spawn_enemy, Director, Enemy, EnemyKind};
 use crate::game::*;
+use crate::players::*;
 use crate::player::Walker;
 use crate::settings::Cvars;
 use crate::story::{Story, STEPS};
@@ -197,11 +198,10 @@ fn console_exec(
     cheats: Res<Cheats>,
     stats: Res<Stats>,
     story: Res<Story>,
-    ctl: Res<Control>,
+    pl: Res<Pl>,
     cv: Res<Cvars>,
-    tgt: Res<Tgt>,
     enemies: Query<&Enemy>,
-    car: Query<&Vehicle, With<PlayerCar>>,
+    car: Query<(&Vehicle, &PlayerCar)>,
 ) {
     if c.pending.is_empty() {
         return;
@@ -211,15 +211,15 @@ fn console_exec(
     for line in lines {
         let snap = Snapshot {
             cheats_on: cheats_now,
-            pos: tgt.pos.to_array(),
-            hp: stats.hp,
+            pos: pl.s[0].pos.to_array(),
+            hp: pl.s[0].hp,
             kills: stats.kills,
             score: stats.score,
             seed: terrain::seed(),
             step: story.step.name().to_string(),
-            in_car: ctl.in_car,
+            in_car: pl.s[0].in_car,
             enemies: enemies.iter().count(),
-            speed_kmh: car.single().map(|v| v.speed * 3.6).unwrap_or(0.0),
+            speed_kmh: car.iter().find(|(_, p)| p.0 == 0).map(|(v, _)| v.speed * 3.6).unwrap_or(0.0),
             history: c.history.clone(),
             cvars: format!("fov {} bloom {:.2} fog {} viewdist {} music {:.2} sfx {:.2}", cv.fov, cv.bloom, cv.fog_vis, cv.view_radius, cv.music_vol, cv.sfx_vol),
             version: env!("CARGO_PKG_VERSION"),
@@ -248,17 +248,17 @@ struct Env<'w, 's> {
     cheats: ResMut<'w, Cheats>,
     stats: ResMut<'w, Stats>,
     story: ResMut<'w, Story>,
-    ctl: ResMut<'w, Control>,
+    pl: ResMut<'w, Pl>,
     cv: ResMut<'w, Cvars>,
-    tgt: Res<'w, Tgt>,
     regen: ResMut<'w, RegenWorld>,
     music: ResMut<'w, MusicCtl>,
     vtime: ResMut<'w, Time<Virtual>>,
     fx: ResMut<'w, FxQueue>,
     dir: ResMut<'w, Director>,
-    aim: Res<'w, crate::camera::AimInfo>,
-    rig: Res<'w, crate::camera::CamRig>,
 }
+
+type CarQ<'w, 's> = Query<'w, 's, (&'static mut Transform, &'static mut Vehicle, &'static PlayerCar)>;
+type WalkQ<'w, 's> = Query<'w, 's, (&'static mut Transform, &'static mut Walker, &'static Player), Without<PlayerCar>>;
 
 #[allow(clippy::too_many_arguments)]
 fn apply_actions(
@@ -266,13 +266,16 @@ fn apply_actions(
     mut env: Env,
     mut con: ResMut<ConsoleState>,
     mut exit: EventWriter<AppExit>,
-    mut car: Query<(&mut Transform, &mut Vehicle), With<PlayerCar>>,
-    mut pl: Query<(&mut Transform, &mut Walker), (With<Player>, Without<PlayerCar>)>,
+    mut car: CarQ,
+    mut walk: WalkQ,
     mut foes: Query<&mut Enemy>,
-    mut vis: Query<&mut Visibility, With<Player>>,
+    mut vis: Query<(&mut Visibility, &Player)>,
 ) {
     let acts: Vec<Action> = q.0.drain(..).collect();
     for a in acts {
+        let (yaw, aim_pt, p1pos) = (env.pl.s[0].rig.yaw, env.pl.s[0].aim.point, env.pl.s[0].pos);
+        let fwd = Vec3::new(-yaw.sin(), 0.0, -yaw.cos());
+        let side = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
         match a {
             Action::CheatsOn(b) => env.cheats.enabled = b,
             Action::Toggle(f, v) => {
@@ -290,75 +293,85 @@ fn apply_actions(
             }
             Action::Speed(v) => env.cheats.speed_mul = v,
             Action::Heal => {
-                env.stats.hp = env.stats.max_hp;
-                if let Ok((_, mut v)) = car.single_mut() {
+                for s in env.pl.s.iter_mut().filter(|s| s.active) {
+                    s.hp = s.max_hp;
+                    s.dead_t = 0.0;
+                }
+                for (_, mut v, _) in &mut car {
                     v.boost_fuel = 1.0;
                 }
             }
-            Action::Kill => env.stats.hp = 0.0,
+            Action::Kill => env.pl.s[0].hp = 0.0,
             Action::KillAll => {
                 for mut e in &mut foes {
                     e.hp = -1.0;
                 }
             }
             Action::GiveAll => {
-                env.stats.owned = [true; NUM_WEAPONS];
-                env.stats.ammo = [0, 400, 60, 30];
+                for s in env.pl.s.iter_mut() {
+                    s.owned = [true; NUM_WEAPONS];
+                    s.ammo = [0, 400, 60, 30];
+                }
             }
             Action::GiveAmmo => {
-                env.stats.ammo[1] += 200;
-                env.stats.ammo[2] += 30;
-                env.stats.ammo[3] += 15;
+                for s in env.pl.s.iter_mut() {
+                    s.ammo[1] += 200;
+                    s.ammo[2] += 30;
+                    s.ammo[3] += 15;
+                }
             }
             Action::GiveBoost => {
-                if let Ok((_, mut v)) = car.single_mut() {
+                for (_, mut v, _) in &mut car {
                     v.boost_fuel = 1.0;
                 }
             }
             Action::GiveWeapon(i) => {
-                env.stats.owned[i] = true;
-                env.stats.cur = i;
-                env.stats.ammo[i] += 40;
+                let s = &mut env.pl.s[0];
+                s.owned[i] = true;
+                s.cur = i;
+                s.ammo[i] += 40;
             }
             Action::Tp(x, z) => {
                 let y = terrain::ground_or_rim(x, z);
-                teleport(&mut env.ctl, &mut car, &mut pl, Vec3::new(x, y + 1.0, z));
+                teleport(env.pl.s[0].in_car, &mut car, &mut walk, Vec3::new(x, y + 1.0, z));
             }
             Action::GotoStart => {
                 let s = crate::world::start_pos();
                 let y = terrain::ground_or_rim(s.x, s.y);
-                teleport(&mut env.ctl, &mut car, &mut pl, Vec3::new(s.x, y + 1.0, s.y));
+                teleport(env.pl.s[0].in_car, &mut car, &mut walk, Vec3::new(s.x, y + 1.0, s.y));
             }
             Action::GotoTarget => {
                 if let Some(t) = env.story.target {
-                    teleport(&mut env.ctl, &mut car, &mut pl, t + Vec3::new(0.0, 1.0, 40.0));
+                    teleport(env.pl.s[0].in_car, &mut car, &mut walk, t + Vec3::new(0.0, 1.0, 40.0));
                 } else {
                     con.log.push((LineKind::Err, "no active target".into()));
                 }
             }
             Action::GotoCar => {
-                if let (Ok((ct, _)), Ok((mut pt, _))) = (car.single(), pl.single_mut()) {
-                    pt.translation = ct.translation + Vec3::new(3.0, 1.0, 0.0);
+                let cpos = car.iter().find(|(_, _, p)| p.0 == 0).map(|(t, _, _)| t.translation);
+                if let (Some(c), Some((mut pt, _, _))) = (cpos, walk.iter_mut().find(|(_, _, p)| p.0 == 0)) {
+                    pt.translation = c + Vec3::new(3.0, 1.0, 0.0);
                 }
             }
             Action::CarHere => {
-                let fwd = Vec3::new(-env.rig.yaw.sin(), 0.0, -env.rig.yaw.cos());
-                let p = env.tgt.pos + fwd * 6.0;
-                if let Ok((mut ct, mut v)) = car.single_mut() {
+                let p = p1pos + fwd * 6.0;
+                if let Some((mut ct, mut v, _)) = car.iter_mut().find(|(_, _, p)| p.0 == 0) {
                     ct.translation = Vec3::new(p.x, terrain::ground_or_rim(p.x, p.z) + 1.0, p.z);
                     v.vel = Vec3::ZERO;
-                    v.yaw = env.rig.yaw;
+                    v.yaw = yaw;
                     v.yaw_rate = 0.0;
                 }
             }
             Action::Drive => {
-                env.ctl.in_car = true;
-                for mut v in &mut vis {
-                    *v = Visibility::Hidden;
+                env.pl.s[0].in_car = true;
+                for (mut v, p) in &mut vis {
+                    if p.0 == 0 {
+                        *v = Visibility::Hidden;
+                    }
                 }
             }
             Action::Flip => {
-                if let Ok((mut ct, mut v)) = car.single_mut() {
+                if let Some((mut ct, mut v, _)) = car.iter_mut().find(|(_, _, p)| p.0 == 0) {
                     v.up = Vec3::Y;
                     v.roll = 0.0;
                     ct.translation.y += 1.0;
@@ -371,10 +384,8 @@ fn apply_actions(
                     "car" => EnemyKind::Pursuit,
                     _ => EnemyKind::Boss,
                 };
-                let fwd = Vec3::new(-env.rig.yaw.sin(), 0.0, -env.rig.yaw.cos());
                 for i in 0..n {
-                    let side = Vec3::new(env.rig.yaw.cos(), 0.0, -env.rig.yaw.sin());
-                    let p = env.tgt.pos + fwd * 45.0 + side * ((i as f32 - n as f32 * 0.5) * 8.0);
+                    let p = p1pos + fwd * 45.0 + side * ((i as f32 - n as f32 * 0.5) * 8.0);
                     let g = terrain::ground_or_rim(p.x, p.z);
                     let y = match k {
                         EnemyKind::Drone => g + 12.0,
@@ -385,21 +396,17 @@ fn apply_actions(
                 }
             }
             Action::Wave => {
-                let fwd = Vec3::new(-env.rig.yaw.sin(), 0.0, -env.rig.yaw.cos());
                 for i in 0..6 {
                     let a = i as f32 * 1.05;
-                    let p = env.tgt.pos + fwd * 50.0 + Vec3::new(a.cos() * 25.0, 0.0, a.sin() * 25.0);
+                    let p = p1pos + fwd * 50.0 + Vec3::new(a.cos() * 25.0, 0.0, a.sin() * 25.0);
                     let g = terrain::ground_or_rim(p.x, p.z);
                     spawn_enemy(&mut env.commands, &mut env.meshes, &env.mats, EnemyKind::Drone, Vec3::new(p.x, g + 12.0, p.z));
                 }
-                let p = env.tgt.pos + fwd * 90.0;
+                let p = p1pos + fwd * 90.0;
                 let g = terrain::ground_or_rim(p.x, p.z);
                 spawn_enemy(&mut env.commands, &mut env.meshes, &env.mats, EnemyKind::Pursuit, Vec3::new(p.x, g + 1.0, p.z));
             }
-            Action::Explode => {
-                let p = env.aim.point;
-                env.fx.push(FxCmd::Explosion { pos: p, size: 1.5 });
-            }
+            Action::Explode => env.fx.push(FxCmd::Explosion { pos: aim_pt, size: 1.5 }),
             Action::Score(n) => env.stats.score += n,
             Action::Mission(m) => {
                 if let Some(s) = STEPS.iter().find(|s| s.name() == m) {
@@ -410,8 +417,7 @@ fn apply_actions(
             }
             Action::NextMission => {
                 let i = STEPS.iter().position(|s| *s == env.story.step).unwrap_or(0);
-                let n = STEPS[(i + 1).min(STEPS.len() - 1)];
-                env.story.pending = Some(n);
+                env.story.pending = Some(STEPS[(i + 1).min(STEPS.len() - 1)]);
             }
             Action::Regen(s) => {
                 if let Some(s) = s {
@@ -420,7 +426,7 @@ fn apply_actions(
                 env.regen.0 = true;
                 let sp = crate::world::start_pos();
                 let y = terrain::ground_or_rim(sp.x, sp.y);
-                teleport(&mut env.ctl, &mut car, &mut pl, Vec3::new(sp.x, y + 1.0, sp.y));
+                teleport(env.pl.s[0].in_car, &mut car, &mut walk, Vec3::new(sp.x, y + 1.0, sp.y));
             }
             Action::Cvar(n, v) => match n.as_str() {
                 "fov" => env.cv.fov = v,
@@ -435,6 +441,19 @@ fn apply_actions(
             Action::ShowFps(v) => env.cv.show_fps = v.unwrap_or(!env.cv.show_fps),
             Action::Timescale(v) => env.vtime.set_relative_speed(v),
             Action::Track(t) => env.music.force_track = t,
+            Action::Split(n) => {
+                if n >= 2 && !env.pl.s[1].active {
+                    env.pl.s[1] = Slot::new(true);
+                    env.pl.s[1].in_car = true;
+                    env.pl.version += 1;
+                } else if n < 2 && env.pl.s[1].active {
+                    env.pl.s[1].active = false;
+                    env.pl.version += 1;
+                }
+            }
+            Action::SplitMode(lr) => {
+                env.pl.opts.two = if lr { crate::split::TwoSplit::LeftRight } else { crate::split::TwoSplit::TopBottom };
+            }
             Action::Screenshot => {
                 con.shots += 1;
                 let path = format!("screenshot_{}.png", con.shots);
@@ -448,22 +467,17 @@ fn apply_actions(
     }
 }
 
-fn teleport(
-    ctl: &mut Control,
-    car: &mut Query<(&mut Transform, &mut Vehicle), With<PlayerCar>>,
-    pl: &mut Query<(&mut Transform, &mut Walker), (With<Player>, Without<PlayerCar>)>,
-    p: Vec3,
-) {
-    if ctl.in_car {
-        if let Ok((mut t, mut v)) = car.single_mut() {
+fn teleport(in_car: bool, car: &mut CarQ, walk: &mut WalkQ, p: Vec3) {
+    if in_car {
+        if let Some((mut t, mut v, _)) = car.iter_mut().find(|(_, _, c)| c.0 == 0) {
             t.translation = p;
             v.vel = Vec3::ZERO;
             v.grounded = false;
             v.last_safe = p;
         }
     }
-    if let Ok((mut t, mut w)) = pl.single_mut() {
-        t.translation = p + if ctl.in_car { Vec3::ZERO } else { Vec3::ZERO };
+    if let Some((mut t, mut w, _)) = walk.iter_mut().find(|(_, _, c)| c.0 == 0) {
+        t.translation = p;
         w.vel = Vec3::ZERO;
         w.last_safe = p;
     }

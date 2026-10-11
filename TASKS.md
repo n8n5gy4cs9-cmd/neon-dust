@@ -1,9 +1,9 @@
 # Neon Dust — Task Board
 _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ = optional. Update this file with every commit._
 
-**Progress: 57/80 tasks done** · version 0.1.0 · updated 2026-10-11
+**Progress: 64/83 tasks done** · version 0.1.0 · updated 2026-10-11
 
-**WHERE TO CONTINUE:** World, vehicle, on-foot, weapons, fx, enemies, audio and story logic all compile and run (software-rendered screenshots verified). NEXT: playtest/balance pass, split-screen co-op (optional M12), tunnel/menu shader extras (M10.7-9), release QA (M13).
+**WHERE TO CONTINUE:** World, vehicle, on-foot, weapons, fx, enemies, audio and story logic all compile and run (software-rendered screenshots verified). NEXT: real-gamepad test of co-op (M12.8), playtest/balance pass, macOS verification (M13.0), release QA.
 
 ## M0 — Plans & docs  (5/5)
 - [x] **M0.1** Write PRD.md (pitch, story, pillars, features, non-goals)
@@ -115,12 +115,16 @@ _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ =
 - [x] **M11.5** `--cmd "..."` CLI to run console lines at startup
 - [x] **M11.6** commands.txt generated from registry
 
-## M12 — Split-screen co-op ★ (optional)  (0/5)
-- [ ] **M12.1** Port nordrep `core/split.rs` layout rules (1–2 players, top/bottom or left/right)
-- [ ] **M12.2** Second Player + car, per-player camera viewport
-- [ ] **M12.3** Input slots: **P1 = keyboard + mouse only, P2 = gamepad only** (join with Start, dead zones)
-- [ ] **M12.4** Per-viewport HUD; shared world tick; enemy targeting nearest player
-- [ ] **M12.5** `split 1|2` console command
+## M12 — Split-screen co-op  (7/7)
+- [x] **M12.1** Port nordrep `core/split.rs` layout rules (`src/split.rs` + its unit tests; 1-2 players used, 3-4 layouts kept)
+- [x] **M12.2** Per-slot state (`players.rs`: `Pl`/`Slot` — hp, ammo, weapons, rig, aim, tracked pos) replacing the single-player resources
+- [x] **M12.3** Input abstraction (`input.rs`): **P1 = keyboard + mouse only, P2 = gamepad only** (Start joins, dead zones, analog triggers/sticks)
+- [x] **M12.4** Second player car + walker + camera with viewport (top/bottom or left/right), chunk streaming around both players
+- [x] **M12.5** Per-viewport HUD (own integrity/ammo/speed/boost/radar/hints) tagged by slot, `UiTargetCamera`
+- [x] **M12.6** Co-op rules: enemies target nearest player, shared objectives/score, any player can hack/trigger beacons, downed player reboots beside partner, both down = Kernel Panic
+- [x] **M12.7** Console: `split <1|2>`, `splitmode <tb|lr>`
+- [ ] **M12.8** Test with a real gamepad (cannot be verified in the headless cloud environment) ★
+- [ ] **M12.9** Optional: second keyboard player (WASD vs arrows) ★
 
 ## M13 — Release & QA  (0/6)
 - [~] **M13.0** **MUST build & run on macOS (Apple Silicon + Intel)** — _no Linux-only deps in Cargo.toml (alsa/udev are system libs only on Linux); `build-mac.sh` makes NeonDust.app; cursor grab uses Locked (supported by winit on macOS); cross-check from Linux is impossible (C toolchain), so it needs verification on a real Mac_

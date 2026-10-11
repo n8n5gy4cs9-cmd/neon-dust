@@ -11,36 +11,25 @@ pub enum AppState {
     Ending,
 }
 
+/// Player vehicle / on-foot character; the value is the player slot (0 = kb+mouse, 1 = gamepad).
 #[derive(Component)]
-pub struct PlayerCar;
+pub struct PlayerCar(pub usize);
 #[derive(Component)]
-pub struct Player;
+pub struct Player(pub usize);
 #[derive(Component)]
 pub struct Health {
     pub hp: f32,
     pub max: f32,
 }
 
-#[derive(Resource)]
-pub struct Control {
-    pub in_car: bool,
-}
-
 pub const NUM_WEAPONS: usize = 4;
 pub const WEAPON_NAMES: [&str; NUM_WEAPONS] = ["PULSE PISTOL", "PLASMA SMG", "RAIL SHOTGUN", "ROCKET LAUNCHER"];
 
+/// Shared (co-op) run counters. Per-player state lives in `players::Pl`.
 #[derive(Resource)]
 pub struct Stats {
-    pub hp: f32,
-    pub max_hp: f32,
     pub kills: u32,
     pub score: u32,
-    pub ammo: [i32; NUM_WEAPONS],
-    pub owned: [bool; NUM_WEAPONS],
-    pub cur: usize,
-    pub cooldown: f32,
-    pub hurt: f32,
-    pub combat: f32,
     pub cars_destroyed: u32,
     pub time: f32,
     pub sentries: u32,
@@ -48,7 +37,7 @@ pub struct Stats {
 }
 impl Default for Stats {
     fn default() -> Self {
-        Stats { hp: 100.0, max_hp: 100.0, kills: 0, score: 0, ammo: [0, 180, 24, 10], owned: [true, true, false, false], cur: 0, cooldown: 0.0, hurt: 0.0, combat: 0.0, cars_destroyed: 0, time: 0.0, sentries: 0, boss_dead: false }
+        Stats { kills: 0, score: 0, cars_destroyed: 0, time: 0.0, sentries: 0, boss_dead: false }
     }
 }
 

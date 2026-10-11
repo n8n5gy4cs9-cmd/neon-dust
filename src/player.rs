@@ -1,6 +1,8 @@
 //! On-foot character "XZ": third-person controller, enter/exit car, death handling.
-use crate::camera::{lerp_angle, CamRig};
+use crate::camera::lerp_angle;
 use crate::game::*;
+use crate::input::Inputs;
+use crate::players::*;
 use crate::meshgen::*;
 use crate::terrain;
 use crate::vehicle::Vehicle;
@@ -48,12 +50,12 @@ fn leg_mesh() -> Mesh {
     m.build()
 }
 
-pub fn spawn_player(commands: &mut Commands, meshes: &mut Assets<Mesh>, mats: &WorldMats, pos: Vec3, yaw: f32) -> Entity {
+pub fn spawn_player(commands: &mut Commands, meshes: &mut Assets<Mesh>, mats: &WorldMats, pos: Vec3, yaw: f32, slot: usize) -> Entity {
     let body = meshes.add(body_mesh());
     let leg = meshes.add(leg_mesh());
     commands
         .spawn((
-            Player,
+            Player(slot),
             Walker { vel: Vec3::ZERO, yaw, grounded: true, anim: 0.0, moving: 0.0, last_safe: pos, shooting: 0.0 },
             Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw)),
             Visibility::default(),
@@ -63,7 +65,7 @@ pub fn spawn_player(commands: &mut Commands, meshes: &mut Assets<Mesh>, mats: &W
             for s in [-1.0f32, 1.0] {
                 p.spawn((Mesh3d(leg.clone()), MeshMaterial3d(mats.solid.clone()), Transform::from_xyz(s * 0.14, 0.82, 0.0), Leg(s)));
             }
-            p.spawn((PointLight { color: Color::srgb(0.1, 0.8, 1.0), intensity: 60_000.0, range: 6.0, ..default() }, Transform::from_xyz(0.0, 1.0, 0.0)));
+            p.spawn((PointLight { color: if slot == 0 { Color::srgb(0.1, 0.8, 1.0) } else { Color::srgb(1.0, 0.5, 0.1) }, intensity: 60_000.0, range: 6.0, ..default() }, Transform::from_xyz(0.0, 1.0, 0.0)));
         })
         .id()
 }
@@ -81,195 +83,227 @@ impl Plugin for PlayerPlugin {
 #[allow(clippy::too_many_arguments)]
 fn walker_move(
     time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    ui: Res<UiBlock>,
-    ctl: Res<Control>,
-    rig: Res<CamRig>,
+    inputs: Res<Inputs>,
+    mut pl: ResMut<Pl>,
     chunks: Res<Chunks>,
     cheats: Res<Cheats>,
     mut sfx: ResMut<SfxQueue>,
     mut fx: ResMut<FxQueue>,
-    mut stats: ResMut<Stats>,
-    mut q: Query<(&mut Transform, &mut Walker), With<Player>>,
+    mut q: Query<(&mut Transform, &mut Walker, &Player)>,
 ) {
-    if ctl.in_car {
-        return;
-    }
-    let Ok((mut tr, mut w)) = q.single_mut() else { return };
     let dt = time.delta_secs().min(0.05);
-    let blocked = ui.0;
-    let k = |c: KeyCode| !blocked && keys.pressed(c);
-    let mut input = Vec2::ZERO;
-    if k(KeyCode::KeyW) || k(KeyCode::ArrowUp) {
-        input.y += 1.0;
-    }
-    if k(KeyCode::KeyS) || k(KeyCode::ArrowDown) {
-        input.y -= 1.0;
-    }
-    if k(KeyCode::KeyD) || k(KeyCode::ArrowRight) {
-        input.x += 1.0;
-    }
-    if k(KeyCode::KeyA) || k(KeyCode::ArrowLeft) {
-        input.x -= 1.0;
-    }
-    let sprint = k(KeyCode::ShiftLeft);
-    let cam_fwd = Vec3::new(-rig.yaw.sin(), 0.0, -rig.yaw.cos());
-    let cam_right = Vec3::new(rig.yaw.cos(), 0.0, -rig.yaw.sin());
-    let wish = (cam_fwd * input.y + cam_right * input.x).normalize_or_zero();
-    let p = tr.translation;
-    let sm = terrain::sample(p.x, p.z);
-    let in_water = sm.m > 0.05 && sm.top < sm.rim - terrain::WATER_DEPTH && p.y < sm.rim - 1.0;
-    let mut speed = if sprint { 12.5 } else { 7.0 } * cheats.speed_mul;
-    if in_water {
-        speed *= 0.55;
-    }
-    if rig.aiming {
-        speed *= 0.6;
-    }
-    if cheats.noclip {
-        let mut v = wish * speed * 3.0;
-        if k(KeyCode::Space) {
-            v.y += speed * 2.5;
+    for (mut tr, mut w, who) in &mut q {
+        let i = who.0;
+        if i >= MAXP || pl.s[i].in_car || !pl.s[i].active {
+            continue;
         }
-        if k(KeyCode::ControlLeft) {
-            v.y -= speed * 2.5;
-        }
-        tr.translation += v * dt;
-        w.vel = Vec3::ZERO;
-    } else {
-        let acc = if w.grounded { 60.0 } else { 12.0 };
-        let target = wish * speed;
-        let cur = Vec3::new(w.vel.x, 0.0, w.vel.z);
-        let nv = cur + (target - cur).clamp_length_max(acc * dt);
-        w.vel.x = nv.x;
-        w.vel.z = nv.z;
-        if w.grounded && k(KeyCode::Space) {
-            w.vel.y = 9.5;
-            w.grounded = false;
-            sfx.play(Sfx::Jump);
-        }
-        let g = if cheats.lowgrav { 8.0 } else { 26.0 };
-        w.vel.y -= g * dt;
-        tr.translation += w.vel * dt;
-        // ground
+        let inp = inputs.0[i].clone();
+        let aiming = pl.s[i].rig.aiming;
+        let yaw = pl.s[i].rig.yaw;
+        let sprint = inp.sprint;
+        let cam_fwd = Vec3::new(-yaw.sin(), 0.0, -yaw.cos());
+        let cam_right = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
+        let wish = (cam_fwd * inp.mv.y + cam_right * inp.mv.x).clamp_length_max(1.0);
         let p = tr.translation;
-        let s2 = terrain::sample(p.x, p.z);
-        if s2.m > 0.015 && p.y <= s2.top {
-            if !w.grounded && w.vel.y < -14.0 {
-                sfx.at(Sfx::Land, p, 0.6);
-                for _ in 0..4 {
-                    fx.push(FxCmd::Dust { pos: p, vel: Vec3::new((p.x * 3.0).sin() * 2.0, 1.5, (p.z * 3.0).cos() * 2.0) });
-                }
-            }
-            tr.translation.y = s2.top;
-            w.vel.y = 0.0;
-            w.grounded = true;
-            if s2.m > 0.4 {
-                w.last_safe = tr.translation;
-            }
-        } else {
-            w.grounded = false;
+        let sm = terrain::sample(p.x, p.z);
+        let in_water = sm.m > 0.05 && sm.top < sm.rim - terrain::WATER_DEPTH && p.y < sm.rim - 1.0;
+        let mut speed = if sprint { 12.5 } else { 7.0 } * cheats.speed_mul;
+        if in_water {
+            speed *= 0.55;
         }
-        if let Some((n, pen)) = chunks.collide(Vec2::new(p.x, p.z), 0.45) {
-            tr.translation.x += n.x * pen;
-            tr.translation.z += n.y * pen;
+        if aiming {
+            speed *= 0.6;
         }
-        if tr.translation.y < s2.rim - 450.0 {
-            tr.translation = w.last_safe + Vec3::Y * 1.0;
+        if cheats.noclip && i == 0 {
+            let mut v = wish * speed * 3.0;
+            if inp.jump {
+                v.y += speed * 2.5;
+            }
+            tr.translation += v * dt;
             w.vel = Vec3::ZERO;
-            if !cheats.god {
-                stats.hp -= 12.0;
-                stats.hurt = 0.5;
+        } else {
+            let acc = if w.grounded { 60.0 } else { 12.0 };
+            let target = wish * speed;
+            let cur = Vec3::new(w.vel.x, 0.0, w.vel.z);
+            let nv = cur + (target - cur).clamp_length_max(acc * dt);
+            w.vel.x = nv.x;
+            w.vel.z = nv.z;
+            if w.grounded && inp.jump {
+                w.vel.y = 9.5;
+                w.grounded = false;
+                sfx.play(Sfx::Jump);
+            }
+            let g = if cheats.lowgrav { 8.0 } else { 26.0 };
+            w.vel.y -= g * dt;
+            tr.translation += w.vel * dt;
+            let p = tr.translation;
+            let s2 = terrain::sample(p.x, p.z);
+            if s2.m > 0.015 && p.y <= s2.top {
+                if !w.grounded && w.vel.y < -14.0 {
+                    sfx.at(Sfx::Land, p, 0.6);
+                    for _ in 0..4 {
+                        fx.push(FxCmd::Dust { pos: p, vel: Vec3::new((p.x * 3.0).sin() * 2.0, 1.5, (p.z * 3.0).cos() * 2.0) });
+                    }
+                }
+                tr.translation.y = s2.top;
+                w.vel.y = 0.0;
+                w.grounded = true;
+                if s2.m > 0.4 {
+                    w.last_safe = tr.translation;
+                }
+            } else {
+                w.grounded = false;
+            }
+            if let Some((n, pen)) = chunks.collide(Vec2::new(p.x, p.z), 0.45) {
+                tr.translation.x += n.x * pen;
+                tr.translation.z += n.y * pen;
+            }
+            if tr.translation.y < s2.rim - 450.0 {
+                tr.translation = w.last_safe + Vec3::Y * 1.0;
+                w.vel = Vec3::ZERO;
+                crate::players::hurt(&mut pl.s[i], cheats.god, 12.0, &mut sfx);
             }
         }
-    }
-    // facing
-    w.shooting = (w.shooting - dt).max(0.0);
-    if mouse.pressed(MouseButton::Left) && !blocked {
-        w.shooting = 0.4;
-    }
-    let face_cam = rig.aiming || w.shooting > 0.0;
-    let moving = Vec3::new(w.vel.x, 0.0, w.vel.z);
-    if face_cam {
-        w.yaw = lerp_angle(w.yaw, rig.yaw, 1.0 - (-18.0 * dt).exp());
-    } else if moving.length() > 0.5 {
-        let ty = (-moving.x).atan2(-moving.z);
-        w.yaw = lerp_angle(w.yaw, ty, 1.0 - (-14.0 * dt).exp());
-    }
-    w.moving = moving.length();
-    tr.rotation = Quat::from_rotation_y(w.yaw);
-    w.anim += w.moving * dt * 1.1;
-    if w.moving > 6.0 && w.grounded && ((time.elapsed_secs() * 10.0) as i32) % 3 == 0 {
-        fx.push(FxCmd::Dust { pos: tr.translation + Vec3::Y * 0.1, vel: -moving * 0.1 + Vec3::Y * 0.5 });
+        // facing
+        w.shooting = (w.shooting - dt).max(0.0);
+        if inp.fire {
+            w.shooting = 0.4;
+        }
+        let face_cam = aiming || w.shooting > 0.0;
+        let moving = Vec3::new(w.vel.x, 0.0, w.vel.z);
+        if face_cam {
+            w.yaw = lerp_angle(w.yaw, yaw, 1.0 - (-18.0 * dt).exp());
+        } else if moving.length() > 0.5 {
+            let ty = (-moving.x).atan2(-moving.z);
+            w.yaw = lerp_angle(w.yaw, ty, 1.0 - (-14.0 * dt).exp());
+        }
+        w.moving = moving.length();
+        tr.rotation = Quat::from_rotation_y(w.yaw);
+        w.anim += w.moving * dt * 1.1;
+        if w.moving > 6.0 && w.grounded && ((time.elapsed_secs() * 10.0) as i32) % 3 == 0 {
+            fx.push(FxCmd::Dust { pos: tr.translation + Vec3::Y * 0.1, vel: -moving * 0.1 + Vec3::Y * 0.5 });
+        }
     }
 }
 
-fn walker_anim(w: Query<&Walker, With<Player>>, mut legs: Query<(&mut Transform, &Leg)>) {
-    let Ok(w) = w.single() else { return };
-    let amp = (w.moving / 8.0).clamp(0.0, 1.2) * 0.9;
-    for (mut t, l) in &mut legs {
-        let a = if w.grounded { (w.anim * 2.4).sin() * amp * l.0 } else { 0.5 * l.0 };
-        t.rotation = Quat::from_rotation_x(a);
+fn walker_anim(w: Query<&Walker, With<Player>>, children: Query<&Children>, walkers: Query<(Entity, &Walker), With<Player>>, mut legs: Query<(&mut Transform, &Leg)>) {
+    let _ = &w;
+    for (e, w) in &walkers {
+        let amp = (w.moving / 8.0).clamp(0.0, 1.2) * 0.9;
+        if let Ok(ch) = children.get(e) {
+            for c in ch.iter() {
+                if let Ok((mut t, l)) = legs.get_mut(c) {
+                    let a = if w.grounded { (w.anim * 2.4).sin() * amp * l.0 } else { 0.5 * l.0 };
+                    t.rotation = Quat::from_rotation_x(a);
+                }
+            }
+        }
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn enter_exit(
-    keys: Res<ButtonInput<KeyCode>>,
-    ui: Res<UiBlock>,
-    mut ctl: ResMut<Control>,
+    inputs: Res<Inputs>,
+    mut pl: ResMut<Pl>,
     mut sfx: ResMut<SfxQueue>,
     mut toasts: ResMut<Toasts>,
-    mut rig: ResMut<CamRig>,
-    mut car: Query<(&Transform, &mut Vehicle), (With<PlayerCar>, Without<Player>)>,
-    mut pl: Query<(&mut Transform, &mut Walker, &mut Visibility), With<Player>>,
+    mut car: Query<(&Transform, &mut Vehicle, &PlayerCar), Without<Player>>,
+    mut walkers: Query<(&mut Transform, &mut Walker, &mut Visibility, &Player)>,
 ) {
-    if ui.0 || !keys.just_pressed(KeyCode::KeyF) {
-        return;
-    }
-    let (Ok((ct, mut v)), Ok((mut pt, mut w, mut vis))) = (car.single_mut(), pl.single_mut()) else { return };
-    if ctl.in_car {
-        // bail out
-        let right = v.right();
-        pt.translation = ct.translation + right * -2.4 + Vec3::Y * 0.5;
-        w.vel = Vec3::new(v.vel.x, 0.0, v.vel.z) * 0.4 + Vec3::Y * 4.0;
-        w.yaw = v.yaw;
-        w.grounded = false;
-        *vis = Visibility::Inherited;
-        ctl.in_car = false;
-        v.throttle = 0.0;
-        rig.yaw = v.yaw;
-        rig.pitch = 0.2;
-        sfx.play(Sfx::Door);
-        toasts.say("ON FOOT - press F near the car to get back in");
-    } else if pt.translation.distance(ct.translation) < 6.0 {
-        ctl.in_car = true;
-        *vis = Visibility::Hidden;
-        rig.yaw = v.yaw;
-        sfx.play(Sfx::Door);
-    } else {
-        sfx.play(Sfx::Deny);
-        toasts.say("Too far from the car");
+    for i in 0..MAXP {
+        if !pl.s[i].alive() || !inputs.0[i].interact {
+            continue;
+        }
+        let Some((ct, mut v, _)) = car.iter_mut().find(|(_, _, p)| p.0 == i) else { continue };
+        let Some((mut pt, mut w, mut vis, _)) = walkers.iter_mut().find(|(_, _, _, p)| p.0 == i) else { continue };
+        if pl.s[i].in_car {
+            let right = v.right();
+            pt.translation = ct.translation + right * -2.4 + Vec3::Y * 0.5;
+            w.vel = Vec3::new(v.vel.x, 0.0, v.vel.z) * 0.4 + Vec3::Y * 4.0;
+            w.yaw = v.yaw;
+            w.grounded = false;
+            *vis = Visibility::Inherited;
+            pl.s[i].in_car = false;
+            v.throttle = 0.0;
+            pl.s[i].rig.yaw = v.yaw;
+            pl.s[i].rig.pitch = 0.2;
+            sfx.play(Sfx::Door);
+            toasts.say("ON FOOT - press F / Y near the car to get back in");
+        } else if pt.translation.distance(ct.translation) < 6.0 {
+            pl.s[i].in_car = true;
+            *vis = Visibility::Hidden;
+            pl.s[i].rig.yaw = v.yaw;
+            sfx.play(Sfx::Door);
+        } else {
+            sfx.play(Sfx::Deny);
+            toasts.say("Too far from the car");
+        }
     }
 }
 
+/// Health clamp, hurt decay, and death. Single player: Kernel Panic. Co-op: the player is downed and
+/// respawns near their partner; both down = Kernel Panic.
+#[allow(clippy::too_many_arguments)]
 fn death_check(
-    mut stats: ResMut<Stats>,
+    time: Res<Time>,
     cheats: Res<Cheats>,
+    mut pl: ResMut<Pl>,
     mut next: ResMut<NextState<AppState>>,
     mut fx: ResMut<FxQueue>,
     mut sfx: ResMut<SfxQueue>,
-    focus: Res<crate::world::Focus>,
+    mut toasts: ResMut<Toasts>,
+    mut walkers: Query<(&mut Transform, &mut Walker, &mut Visibility, &Player)>,
+    mut cars: Query<(&mut Transform, &mut Vehicle, &PlayerCar), Without<Player>>,
 ) {
-    if cheats.god {
-        stats.hp = stats.hp.max(1.0);
+    let dt = time.delta_secs();
+    let multi = pl.count() > 1;
+    for i in 0..MAXP {
+        if !pl.s[i].active {
+            continue;
+        }
+        let s = &mut pl.s[i];
+        if cheats.god && s.dead_t <= 0.0 {
+            s.hp = s.hp.max(1.0);
+        }
+        s.hp = s.hp.min(s.max_hp);
+        s.hurt = (s.hurt - dt).max(0.0);
+        if s.dead_t > 0.0 {
+            s.dead_t -= dt;
+            if s.dead_t <= 0.0 {
+                // respawn next to the partner (or at the car's last safe spot)
+                s.hp = s.max_hp;
+                s.hurt = 0.0;
+                s.in_car = true;
+                let partner = pl.s[1 - i].alive().then(|| pl.s[1 - i].pos);
+                if let Some((mut t, mut v, _)) = cars.iter_mut().find(|(_, _, p)| p.0 == i).map(|(a, b, c)| (a, b, c)) {
+                    let base = partner.map(|p| p + Vec3::new(6.0, 0.0, 0.0)).unwrap_or(v.last_safe);
+                    t.translation = Vec3::new(base.x, terrain::ground_or_rim(base.x, base.z) + 1.0, base.z);
+                    v.vel = Vec3::ZERO;
+                    v.yaw_rate = 0.0;
+                    v.boost_fuel = 1.0;
+                }
+                toasts.say(format!("PLAYER {} REBOOTED", i + 1));
+                sfx.play(Sfx::Checkpoint);
+            }
+            continue;
+        }
+        if s.hp <= 0.0 {
+            let pos = s.pos;
+            fx.push(FxCmd::Explosion { pos, size: 1.6 });
+            sfx.play(Sfx::Explosion);
+            if multi {
+                s.dead_t = 5.0;
+                s.hp = 0.0;
+                s.in_car = false;
+                // hide the body; the car idles with the handbrake on (inputs are zeroed while downed)
+                if let Some((_, _, mut vis, _)) = walkers.iter_mut().find(|(_, _, _, p)| p.0 == i) {
+                    *vis = Visibility::Hidden;
+                }
+            }
+        }
     }
-    stats.hp = stats.hp.min(stats.max_hp);
-    stats.hurt = (stats.hurt - 0.016).max(0.0);
-    if stats.hp <= 0.0 {
-        fx.push(FxCmd::Explosion { pos: focus.0, size: 1.6 });
-        sfx.play(Sfx::Explosion);
+    let all_dead = pl.s.iter().filter(|s| s.active).all(|s| s.hp <= 0.0 && (s.dead_t > 0.0 || !multi));
+    if all_dead {
         next.set(AppState::Dead);
     }
 }

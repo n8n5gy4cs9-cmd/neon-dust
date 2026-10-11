@@ -33,6 +33,8 @@ shots = [
     ("drive.jpg", "Driving with the third-person chase camera, HUD and radar"),
     ("combat.jpg", "Pursuit car and Glitcher drones closing in"),
     ("water.jpg", "Rivers, floating islands and distant ridges"),
+    ("split.jpg", "Two-player split-screen co-op (P1 keyboard + mouse, P2 gamepad)"),
+    ("intro.jpg", "Boot intro tunnel shader"),
     ("console.jpg", "The developer console (` key)"),
 ]
 gallery = "\n".join(f"<figure><a href='shots/{f}'><img src='shots/{f}' alt='{html.escape(c)}' loading='lazy'></a><figcaption>{html.escape(c)}</figcaption></figure>" for f, c in shots)
@@ -107,6 +109,17 @@ cargo run --release</pre>
 <tr><td>Pause</td><td colspan="2"><kbd>Esc</kbd></td></tr>
 <tr><td>Console</td><td colspan="2"><kbd>`</kbd> (backtick)</td></tr></table>
 
+<h3>Split-screen co-op (2 players)</h3>
+<p>Player 1 uses <b>keyboard + mouse only</b>. Player 2 uses a <b>gamepad only</b> - press <kbd>Start</kbd> on the pad during play to join, or type <code>split 2</code> in the console (<code>split 1</code> leaves, <code>splitmode tb|lr</code> switches top/bottom vs left/right). Each player has their own car, camera viewport, HUD, radar, weapons and ammo; enemies target the nearest player, objectives and score are shared. A downed player reboots next to their partner after 5 s; both down = Kernel Panic.</p>
+<table class="t"><tr><th>Action</th><th>Gamepad (P2) in car</th><th>Gamepad (P2) on foot</th></tr>
+<tr><td>Move / steer</td><td>Left stick steers</td><td>Left stick moves, right stick looks</td></tr>
+<tr><td>Throttle / brake</td><td>RT / LT</td><td>-</td></tr>
+<tr><td>Handbrake drift / jump</td><td>A</td><td>A (jump)</td></tr>
+<tr><td>Boost / sprint</td><td>B</td><td>Left stick click</td></tr>
+<tr><td>Fire</td><td>X cannons, RB rockets</td><td>RT fire, LT aim</td></tr>
+<tr><td>Enter / exit car</td><td colspan="2">Y</td></tr>
+<tr><td>Weapon</td><td>D-pad left/right</td><td>D-pad or LB / RB</td></tr>
+<tr><td>Hack terminal</td><td colspan="2">hold X near the terminal</td></tr></table>
 <h2 id="guide">Player guide</h2>
 <div class="grid">
 <div class="card"><h3>Driving</h3><p>The car is a real force-based model: engine power, brakes, drag, rolling resistance and slip-angle tyres with sliding friction. Turn in hard and tap <kbd>Space</kbd> to break the rear tyres loose and slide. Slopes pull and push the car; crests launch it. Water slows you, void edges end you (you respawn at your last safe spot, minus a bit of integrity).</p></div>

@@ -3,6 +3,8 @@ use crate::audio::MusicCtl;
 use crate::enemies::*;
 use crate::fx::{glow, glow_a};
 use crate::game::*;
+use crate::input::Inputs;
+use crate::players::*;
 use crate::meshgen::*;
 use crate::terrain;
 use crate::world::{Focus, WorldMats};
@@ -213,12 +215,10 @@ struct AssetsBundle<'w> {
 #[allow(clippy::too_many_arguments)]
 fn story_update(
     time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
+    inputs: Res<Inputs>,
     mut s: ResMut<Story>,
-    tgt: Res<Tgt>,
+    mut pl: ResMut<Pl>,
     focus: Res<Focus>,
-    ctl: Res<Control>,
-    ui: Res<UiBlock>,
     mut stats: ResMut<Stats>,
     mut dir: ResMut<Director>,
     mut cp: ResMut<Checkpoint>,
@@ -227,7 +227,7 @@ fn story_update(
     mut ass: AssetsBundle,
     beacons: Query<Entity, With<Beacon>>,
     terminals: Query<Entity, With<Terminal>>,
-    car: Query<&Transform, With<PlayerCar>>,
+    car: Query<(&Transform, &PlayerCar)>,
 ) {
     let dt = time.delta_secs();
     if !s.started {
@@ -271,9 +271,11 @@ fn story_update(
             }
             Step::Gate => {
                 s.chapter = "ACT II: THE FIREWALL".into();
-                stats.owned[2] = true;
-                stats.ammo[2] += 16;
-                stats.cur = 2;
+                for sl in pl.s.iter_mut() {
+                    sl.owned[2] = true;
+                    sl.ammo[2] += 16;
+                    sl.cur = 2;
+                }
                 m.toasts.say("WEAPON UNLOCKED: RAIL SHOTGUN (3)");
                 s.say("ORACLE", "Cache flushed. Weapon released: RAIL SHOTGUN. The Firewall is ahead - its gate only opens for those on foot.");
                 place_target(&mut s, &mut c, from, 800.0, 1200.0, 23, [1.0, 0.1, 0.7], &beacons);
@@ -312,9 +314,11 @@ fn story_update(
             }
             Step::Pursuit => {
                 s.chapter = "ACT II: PURSUIT".into();
-                stats.owned[3] = true;
-                stats.ammo[3] += 10;
-                stats.cur = 3;
+                for sl in pl.s.iter_mut() {
+                    sl.owned[3] = true;
+                    sl.ammo[3] += 10;
+                    sl.cur = 3;
+                }
                 m.toasts.say("WEAPON UNLOCKED: ROCKET LAUNCHER (4)");
                 s.say("ORACLE", "Gate open! Pursuit daemons deployed - Rocket Launcher released. Get back in the car and RUN.");
                 place_target(&mut s, &mut c, from, 900.0, 1300.0, 37, [1.0, 0.55, 0.1], &beacons);
@@ -373,15 +377,15 @@ fn story_update(
     }
 
     // ---- step completion checks ----
-    let (car_pos, _) = car.single().map(|t| (t.translation, ())).unwrap_or((tgt.pos, ()));
+    let car_pos = car.iter().min_by_key(|(_, p)| p.0).map(|(t, _)| t.translation).unwrap_or(pl.s[0].pos);
     let tpos = s.target;
-    let near_target = |r: f32| tpos.map_or(false, |t| t.distance(Vec3::new(tgt.pos.x, t.y, tgt.pos.z)) < r);
+    let near_target = |r: f32| tpos.map_or(false, |t| pl.s.iter().filter(|sl| sl.alive()).any(|sl| Vec3::new(sl.pos.x, t.y, sl.pos.z).distance(t) < r));
     let kills = stats.kills - s.base_kills.min(stats.kills);
     let mut advance: Option<Step> = None;
     match s.step {
         Step::Wake => {
             s.objective = "Get in the car - press F next to it".into();
-            if ctl.in_car {
+            if pl.any_in_car() {
                 advance = Some(Step::Boot);
             }
         }
@@ -415,8 +419,17 @@ fn story_update(
             }
         }
         Step::Hack => {
-            let near = s.terminal.map_or(false, |t| t.distance(tgt.pos) < 8.0);
-            if near && !ctl.in_car && !ui.0 && keys.pressed(KeyCode::KeyE) {
+            let mut near = false;
+            let mut holding = false;
+            if let Some(term) = s.terminal {
+                for (i, sl) in pl.s.iter().enumerate() {
+                    if sl.alive() && !sl.in_car && term.distance(sl.pos) < 8.0 {
+                        near = true;
+                        holding |= inputs.0[i].hack;
+                    }
+                }
+            }
+            if near && holding {
                 s.hack += dt / 6.0;
             } else {
                 s.hack = (s.hack - dt * 0.05).max(0.0);
@@ -473,12 +486,13 @@ pub fn dialogue_tick(time: Res<Time>, mut s: ResMut<Story>) {
     }
 }
 
-fn ending_input(keys: Res<ButtonInput<KeyCode>>, mut s: ResMut<Story>) {
+fn ending_input(keys: Res<ButtonInput<KeyCode>>, inputs: Res<Inputs>, mut s: ResMut<Story>) {
+    let pad = inputs.0[1].weapon_step;
     if s.ending == 0 {
-        if keys.just_pressed(KeyCode::Digit1) {
+        if keys.just_pressed(KeyCode::Digit1) || pad < 0 {
             s.ending = 1;
             s.pending = Some(Step::Free);
-        } else if keys.just_pressed(KeyCode::Digit2) {
+        } else if keys.just_pressed(KeyCode::Digit2) || pad > 0 {
             s.ending = 2;
             s.pending = Some(Step::Free);
         }

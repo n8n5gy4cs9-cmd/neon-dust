@@ -4,6 +4,7 @@ pub mod sfx;
 pub mod synth;
 
 use crate::game::*;
+use crate::players::Pl;
 use crate::noise::Rng;
 use crate::settings::Cvars;
 use crate::vehicle::Vehicle;
@@ -158,7 +159,7 @@ fn music_mix(
     time: Res<Time<Real>>,
     state: Res<State<AppState>>,
     ctl: Res<MusicCtl>,
-    stats: Res<Stats>,
+    pl: Res<Pl>,
     cv: Res<Cvars>,
     mut vols: ResMut<MusicVols>,
     mut layers: Query<(&MusicLayer, &mut AudioSink)>,
@@ -182,7 +183,7 @@ fn music_mix(
         AppState::Dead => [0.0; 4],
         AppState::Playing | AppState::Paused => {
             let k = if st == AppState::Paused { 0.3 } else { 1.0 };
-            let combat = if stats.combat > 0.0 { 1.0 } else { 0.0 };
+            let combat = if pl.best_combat() > 0.0 { 1.0 } else { 0.0 };
             if let Some(t) = ctl.force_track {
                 let mut a = [0.0; 4];
                 a[t.min(3)] = 1.0;
@@ -205,9 +206,9 @@ fn music_mix(
 fn engine_sound(
     state: Res<State<AppState>>,
     cv: Res<Cvars>,
-    ctl: Option<Res<Control>>,
+    pl: Res<Pl>,
     focus: Res<Focus>,
-    car: Query<(&Transform, &Vehicle), With<PlayerCar>>,
+    car: Query<(&Transform, &Vehicle, &PlayerCar)>,
     mut eng: Query<&mut AudioSink, (With<EngineTag>, Without<SkidTag>)>,
     mut skid: Query<&mut AudioSink, (With<SkidTag>, Without<EngineTag>)>,
     mut boosting: Local<bool>,
@@ -216,7 +217,7 @@ fn engine_sound(
     let Ok(mut e) = eng.single_mut() else { return };
     let Ok(mut s) = skid.single_mut() else { return };
     let playing = *state.get() == AppState::Playing;
-    let Ok((t, v)) = car.single() else {
+    let Some((t, v, _)) = car.iter().find(|(_, _, p)| p.0 == 0) else {
         e.set_volume(Volume::Linear(0.0));
         s.set_volume(Volume::Linear(0.0));
         return;
@@ -226,7 +227,7 @@ fn engine_sound(
         s.set_volume(Volume::Linear(0.0));
         return;
     }
-    let in_car = ctl.map_or(true, |c| c.in_car);
+    let in_car = pl.s[0].in_car;
     let d = if in_car { 0.0 } else { t.translation.distance(focus.0) };
     let att = 1.0 / (1.0 + d / 25.0);
     let rpm = (v.speed / 38.0).min(1.0);

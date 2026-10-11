@@ -63,6 +63,8 @@ pub enum Action {
     ShowFps(Option<bool>),
     Timescale(f32),
     Track(Option<usize>),
+    Split(u8),
+    SplitMode(bool),
     Screenshot,
     Quit,
     Clear,
@@ -140,6 +142,8 @@ pub const CMDS: &[CmdDef] = &[
     c!("timescale", ["ts"], "timescale <0.1-4>", "Game speed.", false, "Game"),
     c!("musicvol", [], "musicvol <0-1>", "Music volume.", false, "Audio"),
     c!("sfxvol", [], "sfxvol <0-1>", "SFX volume.", false, "Audio"),
+    c!("split", [], "split <1|2>", "1 = single screen, 2 = co-op split-screen (P1 keyboard+mouse, P2 gamepad; Start joins).", false, "Game"),
+    c!("splitmode", [], "splitmode <tb|lr>", "Two-player layout: top/bottom or left/right.", false, "Game"),
     c!("track", [], "track <0-3|auto>", "Force music: 0 menu 1 drive 2 combat 3 port.", false, "Audio"),
     c!("sens", [], "sens <0.0005-0.01>", "Mouse sensitivity.", false, "Game"),
     c!("god", ["godmode"], "god [on|off]", "Cannot be hurt.", true, "Cheats"),
@@ -195,6 +199,8 @@ pub fn complete(line: &str) -> Vec<String> {
         "goto" => vec!["start", "target", "car"],
         "give" => vec!["all", "ammo", "boost", "1", "2", "3", "4"],
         "track" => vec!["auto", "0", "1", "2", "3"],
+        "split" => vec!["1", "2"],
+        "splitmode" => vec!["tb", "lr"],
         "cheats" | "fps" | "god" | "noclip" | "infammo" | "onehit" | "peaceful" | "infboost" | "lowgrav" => vec!["on", "off"],
         "help" => CMDS.iter().map(|c| c.name).collect(),
         _ => vec![],
@@ -332,6 +338,24 @@ pub fn execute(line: &str, snap: &Snapshot) -> Output {
                 o.ok(format!("timescale {}", v.clamp(0.1, 4.0)));
             }
             None => o.err("usage: timescale <0.1-4>"),
+        },
+        "split" => match a.first().and_then(|s| s.parse::<u8>().ok()) {
+            Some(n @ 1..=2) => {
+                o.actions.push(Action::Split(n));
+                o.ok(if n == 2 { "split-screen: player 2 joins (gamepad)" } else { "single screen" });
+            }
+            _ => o.err("usage: split <1|2>"),
+        },
+        "splitmode" => match a.first().copied() {
+            Some("tb") | Some("topbottom") => {
+                o.actions.push(Action::SplitMode(false));
+                o.ok("layout: top/bottom");
+            }
+            Some("lr") | Some("leftright") => {
+                o.actions.push(Action::SplitMode(true));
+                o.ok("layout: left/right");
+            }
+            _ => o.err("usage: splitmode <tb|lr>"),
         },
         "track" => match a.first() {
             Some(&"auto") | None => {

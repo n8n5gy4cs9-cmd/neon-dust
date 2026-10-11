@@ -7,8 +7,9 @@ use crate::noise::Rng;
 use crate::player::Walker;
 use crate::terrain;
 use crate::vehicle::*;
-use crate::weapons::{hurt_player, spawn_bullet};
-use crate::world::{Focus, WorldMats};
+use crate::players::*;
+use crate::weapons::spawn_bullet;
+use crate::world::WorldMats;
 use bevy::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -37,13 +38,6 @@ pub struct Enemy {
 pub struct Pickup {
     pub kind: u8, // 0 health 1 ammo 2 boost 3 weapon
     pub t: f32,
-}
-
-/// Where the player is (car or foot) and how fast.
-#[derive(Resource, Default)]
-pub struct Tgt {
-    pub pos: Vec3,
-    pub vel: Vec3,
 }
 
 #[derive(Resource)]
@@ -168,7 +162,7 @@ pub fn spawn_pickup(commands: &mut Commands, meshes: &mut Assets<Mesh>, mats: &W
 pub struct EnemiesPlugin;
 impl Plugin for EnemiesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Tgt>().init_resource::<Director>().add_systems(
+        app.init_resource::<Director>().add_systems(
             Update,
             (track_player, director, enemy_ai, pursuit_ai, enemy_death, pickups)
                 .chain()
@@ -178,20 +172,27 @@ impl Plugin for EnemiesPlugin {
     }
 }
 
+/// Fill each slot's tracked position/velocity (car or foot) used by enemy AI and pickups.
 fn track_player(
-    ctl: Res<Control>,
-    mut tgt: ResMut<Tgt>,
-    car: Query<(&Transform, &Vehicle), With<PlayerCar>>,
-    pl: Query<(&Transform, &Walker), (With<Player>, Without<PlayerCar>)>,
+    mut pl: ResMut<Pl>,
+    car: Query<(&Transform, &Vehicle, &PlayerCar)>,
+    walkers: Query<(&Transform, &Walker, &Player), Without<PlayerCar>>,
 ) {
-    if ctl.in_car {
-        if let Ok((t, v)) = car.single() {
-            tgt.pos = t.translation + Vec3::Y * 0.8;
-            tgt.vel = v.vel;
+    for (t, v, pc) in &car {
+        let s = &mut pl.s[pc.0.min(MAXP - 1)];
+        s.car_pos = t.translation;
+        if s.in_car {
+            s.pos = t.translation + Vec3::Y * 0.8;
+            s.vel = v.vel;
         }
-    } else if let Ok((t, w)) = pl.single() {
-        tgt.pos = t.translation + Vec3::Y * 1.0;
-        tgt.vel = w.vel;
+    }
+    for (t, w, p) in &walkers {
+        let s = &mut pl.s[p.0.min(MAXP - 1)];
+        s.foot_pos = t.translation;
+        if !s.in_car {
+            s.pos = t.translation + Vec3::Y * 1.0;
+            s.vel = w.vel;
+        }
     }
 }
 
@@ -200,7 +201,7 @@ fn director(
     mut commands: Commands,
     time: Res<Time>,
     mut dir: ResMut<Director>,
-    tgt: Res<Tgt>,
+    pl: Res<Pl>,
     cheats: Res<Cheats>,
     mut meshes: ResMut<Assets<Mesh>>,
     mats: Res<WorldMats>,
@@ -217,20 +218,27 @@ fn director(
     dir.timer = dir.interval;
     *seed = seed.wrapping_add(0x1234_5677);
     let mut rng = Rng::new(*seed ^ time.elapsed_secs_f64().to_bits());
+    let alive: Vec<usize> = (0..MAXP).filter(|i| pl.s[*i].alive()).collect();
+    if alive.is_empty() {
+        return;
+    }
+    let who = alive[(rng.next_u32() as usize) % alive.len()];
+    let center = pl.s[who].pos;
+    let scale = alive.len();
     let drones = enemies.iter().filter(|e| e.kind == EnemyKind::Drone).count();
     let cars = enemies.iter().filter(|e| e.kind == EnemyKind::Pursuit).count();
-    if drones < dir.max_drones {
+    if drones < dir.max_drones * scale {
         let a = rng.range(0.0, 6.283);
         let d = rng.range(80.0, 130.0);
-        let (x, z) = (tgt.pos.x + a.cos() * d, tgt.pos.z + a.sin() * d);
-        let y = terrain::ground_or_rim(x, z).max(tgt.pos.y - 10.0) + rng.range(8.0, 20.0);
+        let (x, z) = (center.x + a.cos() * d, center.z + a.sin() * d);
+        let y = terrain::ground_or_rim(x, z).max(center.y - 10.0) + rng.range(8.0, 20.0);
         spawn_enemy(&mut commands, &mut meshes, &mats, EnemyKind::Drone, Vec3::new(x, y, z));
     }
-    if cars < dir.max_cars {
+    if cars < dir.max_cars * scale {
         for _ in 0..14 {
             let a = rng.range(0.0, 6.283);
             let d = rng.range(140.0, 230.0);
-            let (x, z) = (tgt.pos.x + a.cos() * d, tgt.pos.z + a.sin() * d);
+            let (x, z) = (center.x + a.cos() * d, center.z + a.sin() * d);
             let s = terrain::sample(x, z);
             if s.m > 0.5 && s.river < 0.05 && s.relief > -1.0 {
                 spawn_enemy(&mut commands, &mut meshes, &mats, EnemyKind::Pursuit, Vec3::new(x, s.top + 1.0, z));
@@ -244,7 +252,7 @@ fn director(
 fn enemy_ai(
     mut commands: Commands,
     time: Res<Time>,
-    tgt: Res<Tgt>,
+    pl: Res<Pl>,
     cheats: Res<Cheats>,
     fxa: Res<FxAssets>,
     mut q: Query<(&mut Transform, &mut Enemy), Without<Vehicle>>,
@@ -256,7 +264,8 @@ fn enemy_ai(
     let mut rng = Rng::new(*seed ^ time.elapsed_secs_f64().to_bits());
     for (mut tr, mut en) in &mut q {
         en.flash = (en.flash - dt).max(0.0);
-        let to = tgt.pos - tr.translation;
+        let Some((_, tpos, tvel)) = pl.nearest(tr.translation) else { continue };
+        let to = tpos - tr.translation;
         let dist = to.length();
         let yaw_to = (-to.x).atan2(-to.z);
         match en.kind {
@@ -264,9 +273,9 @@ fn enemy_ai(
                 let boss = en.kind == EnemyKind::Boss;
                 en.phase += dt * if boss { 0.35 } else { 0.7 };
                 let r = if boss { 55.0 } else { 28.0 };
-                let want_xz = Vec3::new(tgt.pos.x + en.phase.cos() * r, 0.0, tgt.pos.z + en.phase.sin() * r);
+                let want_xz = Vec3::new(tpos.x + en.phase.cos() * r, 0.0, tpos.z + en.phase.sin() * r);
                 let h = terrain::ground_or_rim(want_xz.x, want_xz.z) + if boss { 28.0 } else { 11.0 } + (t * 2.0 + en.aux).sin() * 2.0;
-                let want = Vec3::new(want_xz.x, h.max(tgt.pos.y + 4.0), want_xz.z) + tgt.vel * 0.4;
+                let want = Vec3::new(want_xz.x, h.max(tpos.y + 4.0), want_xz.z) + tvel * 0.4;
                 let acc = (want - tr.translation).clamp_length_max(1.0) * if boss { 22.0 } else { 40.0 };
                 en.vel += acc * dt;
                 en.vel *= 1.0 - 1.3 * dt;
@@ -279,7 +288,7 @@ fn enemy_ai(
                 if !cheats.peaceful && dist < if boss { 220.0 } else { 100.0 } {
                     en.cd -= dt;
                     if en.cd <= 0.0 {
-                        let lead = tgt.pos + tgt.vel * (dist / 95.0) * 0.5;
+                        let lead = tpos + tvel * (dist / 95.0) * 0.5;
                         let spread = if boss { 0.06 } else { 0.035 };
                         let mut d = (lead - tr.translation).normalize_or_zero();
                         d += Vec3::new(rng.range(-spread, spread), rng.range(-spread, spread), rng.range(-spread, spread));
@@ -313,7 +322,7 @@ fn enemy_ai(
                     en.cd -= dt;
                     if en.cd <= 0.0 {
                         let o = tr.translation + Vec3::Y * 1.8;
-                        let lead = tgt.pos + tgt.vel * (dist / 105.0) * 0.5;
+                        let lead = tpos + tvel * (dist / 105.0) * 0.5;
                         let mut d = (lead - o).normalize_or_zero();
                         d += Vec3::new(rng.range(-0.03, 0.03), rng.range(-0.03, 0.03), rng.range(-0.03, 0.03));
                         let d = d.normalize();
@@ -336,20 +345,23 @@ fn enemy_ai(
 #[allow(clippy::too_many_arguments)]
 fn pursuit_ai(
     time: Res<Time>,
-    tgt: Res<Tgt>,
     cheats: Res<Cheats>,
-    ctl: Res<Control>,
-    mut stats: ResMut<Stats>,
+    mut pl: ResMut<Pl>,
     mut sfx: ResMut<SfxQueue>,
     mut fx: ResMut<FxQueue>,
     mut shake: ResMut<Shake>,
     mut q: Query<(&mut Transform, &mut Vehicle, &mut Enemy), Without<PlayerCar>>,
-    mut pcar: Query<(&mut Transform, &mut Vehicle), With<PlayerCar>>,
+    mut pcars: Query<(&mut Transform, &mut Vehicle, &PlayerCar)>,
 ) {
     let dt = time.delta_secs().min(0.05);
-    for (mut tr, mut v, mut en) in &mut q {
+    for (tr, mut v, mut en) in &mut q {
         en.flash = (en.flash - dt).max(0.0);
-        let to = Vec3::new(tgt.pos.x - tr.translation.x, 0.0, tgt.pos.z - tr.translation.z);
+        let Some((slot, tpos, _)) = pl.nearest(tr.translation) else {
+            v.throttle = 0.0;
+            v.handbrake = true;
+            continue;
+        };
+        let to = Vec3::new(tpos.x - tr.translation.x, 0.0, tpos.z - tr.translation.z);
         let dist = to.length();
         let want_yaw = (-to.x).atan2(-to.z);
         let mut diff = want_yaw - v.yaw;
@@ -365,10 +377,11 @@ fn pursuit_ai(
         v.throttle = if void_ahead { 0.2 } else if cheats.peaceful { 0.0 } else { 1.0 };
         v.boost = dist > 140.0 && !void_ahead;
         v.handbrake = diff.abs() > 1.7 && v.speed > 15.0 || cheats.peaceful;
-        // ram player's car
-        if let Ok((pt, mut pv)) = pcar.single_mut() {
+        // ram any player's car
+        for (pt, mut pv, pc) in pcars.iter_mut() {
             let d = pt.translation - tr.translation;
-            if d.length() < 3.6 && ctl.in_car || (d.length() < 3.2 && !ctl.in_car) {
+            let in_car = pl.s[pc.0.min(MAXP - 1)].in_car;
+            if d.length() < if in_car { 3.6 } else { 3.2 } {
                 let n = Vec3::new(d.x, 0.0, d.z).normalize_or_zero();
                 let rel = (v.vel - pv.vel).dot(n);
                 if rel > 3.0 {
@@ -377,8 +390,8 @@ fn pursuit_ai(
                     en.flash = 0.2;
                     pv.vel += n * rel * 0.5;
                     v.vel -= n * rel * 0.5;
-                    if ctl.in_car {
-                        hurt_player(&mut stats, &cheats, dmg, true, &mut sfx);
+                    if in_car {
+                        hurt(&mut pl.s[pc.0.min(MAXP - 1)], cheats.god, dmg, &mut sfx);
                     } else {
                         pv.vel += n * rel * 0.2;
                     }
@@ -388,11 +401,10 @@ fn pursuit_ai(
                 }
             }
         }
-        // on foot: ram damage
-        if !ctl.in_car && dist < 3.0 && v.speed > 8.0 && !cheats.peaceful {
-            hurt_player(&mut stats, &cheats, 40.0 * dt * 3.0, false, &mut sfx);
+        // on foot: run-over damage
+        if !pl.s[slot].in_car && dist < 3.0 && v.speed > 8.0 && !cheats.peaceful {
+            hurt(&mut pl.s[slot], cheats.god, 40.0 * dt * 3.0, &mut sfx);
         }
-        let _ = &mut tr;
     }
 }
 
@@ -400,7 +412,7 @@ fn pursuit_ai(
 fn enemy_death(
     mut commands: Commands,
     time: Res<Time>,
-    tgt: Res<Tgt>,
+    pl: Res<Pl>,
     mut stats: ResMut<Stats>,
     mut fx: ResMut<FxQueue>,
     mut sfx: ResMut<SfxQueue>,
@@ -446,7 +458,7 @@ fn enemy_death(
         if en.hp < en.max * 0.35 && en.kind != EnemyKind::Sentry {
             fx.push(FxCmd::Fire { pos: p + Vec3::Y * 0.5 });
         }
-        if en.kind != EnemyKind::Sentry && en.kind != EnemyKind::Boss && p.distance(tgt.pos) > 700.0 {
+        if en.kind != EnemyKind::Sentry && en.kind != EnemyKind::Boss && pl.min_dist(p) > 700.0 && pl.count() > 0 {
             commands.entity(e).despawn();
         }
     }
@@ -456,55 +468,56 @@ fn enemy_death(
 fn pickups(
     mut commands: Commands,
     time: Res<Time>,
-    tgt: Res<Tgt>,
-    mut stats: ResMut<Stats>,
+    mut pl: ResMut<Pl>,
     mut fx: ResMut<FxQueue>,
     mut sfx: ResMut<SfxQueue>,
     mut toasts: ResMut<Toasts>,
-    mut car: Query<&mut Vehicle, With<PlayerCar>>,
+    mut car: Query<(&mut Vehicle, &PlayerCar)>,
     mut q: Query<(Entity, &mut Transform, &Pickup)>,
 ) {
     let t = time.elapsed_secs();
     for (e, mut tr, p) in &mut q {
         tr.rotation = Quat::from_rotation_y(t * 2.0 + p.t);
         tr.translation.y += (t * 3.0 + p.t).sin() * 0.003;
-        if tr.translation.distance(tgt.pos) < 4.5 {
-            match p.kind {
-                0 => {
-                    stats.hp = (stats.hp + 35.0).min(stats.max_hp);
-                    toasts.say("+35 INTEGRITY");
+        let Some(i) = (0..MAXP).filter(|i| pl.s[*i].alive()).find(|i| tr.translation.distance(pl.s[*i].pos) < 4.5) else { continue };
+        match p.kind {
+            0 => {
+                let s = &mut pl.s[i];
+                s.hp = (s.hp + 35.0).min(s.max_hp);
+                toasts.say("+35 INTEGRITY");
+            }
+            1 => {
+                let s = &mut pl.s[i];
+                s.ammo[1] += 60;
+                if s.owned[2] {
+                    s.ammo[2] += 6;
                 }
-                1 => {
-                    stats.ammo[1] += 60;
-                    if stats.owned[2] {
-                        stats.ammo[2] += 6;
-                    }
-                    if stats.owned[3] {
-                        stats.ammo[3] += 3;
-                    }
-                    stats.ammo[3] += 1;
-                    toasts.say("AMMO CACHE");
+                if s.owned[3] {
+                    s.ammo[3] += 3;
                 }
-                2 => {
-                    if let Ok(mut v) = car.single_mut() {
-                        v.boost_fuel = 1.0;
-                    }
-                    toasts.say("BOOST REFILL");
+                s.ammo[3] += 1;
+                toasts.say("AMMO CACHE");
+            }
+            2 => {
+                if let Some((mut v, _)) = car.iter_mut().find(|(_, c)| c.0 == i) {
+                    v.boost_fuel = 1.0;
                 }
-                _ => {
-                    let next = (0..NUM_WEAPONS).find(|i| !stats.owned[*i]);
-                    if let Some(i) = next {
-                        stats.owned[i] = true;
-                        stats.cur = i;
-                        toasts.say(format!("NEW WEAPON: {}", WEAPON_NAMES[i]));
-                    } else {
-                        stats.ammo[1] += 80;
-                    }
+                toasts.say("BOOST REFILL");
+            }
+            _ => {
+                let s = &mut pl.s[i];
+                let next = (0..NUM_WEAPONS).find(|k| !s.owned[*k]);
+                if let Some(k) = next {
+                    s.owned[k] = true;
+                    s.cur = k;
+                    toasts.say(format!("NEW WEAPON: {}", WEAPON_NAMES[k]));
+                } else {
+                    s.ammo[1] += 80;
                 }
             }
-            fx.push(FxCmd::Pickup { pos: tr.translation });
-            sfx.play(Sfx::Pickup);
-            commands.entity(e).despawn();
         }
+        fx.push(FxCmd::Pickup { pos: tr.translation });
+        sfx.play(Sfx::Pickup);
+        commands.entity(e).despawn();
     }
 }
