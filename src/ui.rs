@@ -90,7 +90,7 @@ impl Plugin for UiPlugin {
 }
 
 fn t(s: &str, size: f32, c: Color) -> impl Bundle {
-    (Text::new(s), TextFont { font_size: size, ..default() }, TextColor(c))
+    (Text::new(s), TextFont { font: crate::fonts::term(), font_size: size * 1.3, ..default() }, TextColor(c))
 }
 
 fn full() -> Node {
@@ -115,13 +115,17 @@ fn bar(p: &mut ChildSpawnerCommands, kind: Bar, w: f32, h: f32, c: Color) {
         });
 }
 
-fn title_row(p: &mut ChildSpawnerCommands, s: &str, size: f32) {
+fn title_row(p: &mut ChildSpawnerCommands, s: &str, size: f32, font: Handle<Font>) {
     p.spawn(Node { flex_direction: FlexDirection::Row, ..default() }).with_children(|r| {
         let n = s.chars().count().max(1);
         for (i, ch) in s.chars().enumerate() {
+            if ch == ' ' {
+                r.spawn(Node { width: Val::Px(size * 0.4), ..default() });
+                continue;
+            }
             r.spawn((
                 Text::new(ch.to_string()),
-                TextFont { font_size: size, ..default() },
+                TextFont { font: font.clone(), font_size: size, ..default() },
                 TextColor(grad(i as f32 / (n - 1).max(1) as f32)),
                 TextShadow { offset: Vec2::new(size * 0.04, size * 0.04), color: Color::srgba(0.8, 0.0, 0.6, 0.9) },
             ));
@@ -212,7 +216,7 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
     commands
         .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(10.0), ..full() }, Group(G::Menu), Visibility::default()))
         .with_children(|p| {
-            p.spawn(Node { margin: UiRect::bottom(Val::Px(0.0)), ..default() }).with_children(|r| title_row(r, "NEON DUST", 128.0));
+            p.spawn(Node { margin: UiRect::bottom(Val::Px(0.0)), ..default() }).with_children(|r| title_row(r, "NEON DUST", 128.0, crate::fonts::logo()));
             p.spawn(t("A SYNTHWAVE ROAD-RAGE ODYSSEY THROUGH THE SKY OF A DEAD MACHINE", 18.0, DIM));
             p.spawn((Node { margin: UiRect::vertical(Val::Px(26.0)), ..default() }, t("PRESS ENTER", 34.0, Color::WHITE), HudText::Prompt));
             p.spawn(t("WASD drive/move   SHIFT boost/sprint   SPACE drift/jump   LMB shoot   RMB rockets/aim", 16.0, CYAN));
@@ -224,7 +228,7 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
     commands
         .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(14.0), ..full() }, BackgroundColor(Color::srgba(0.02, 0.0, 0.08, 0.7)), Group(G::Pause), Visibility::default()))
         .with_children(|p| {
-            title_row(p, "PAUSED", 80.0);
+            title_row(p, "PAUSED", 80.0, crate::fonts::shade());
             p.spawn(t("ESC / ENTER  resume", 22.0, Color::WHITE));
             p.spawn(t("` open console (cheats on  ->  god, noclip, give all ...)", 16.0, DIM));
         });
@@ -233,7 +237,7 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
     commands
         .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(14.0), ..full() }, BackgroundColor(Color::srgba(0.15, 0.0, 0.02, 0.6)), Group(G::Dead), Visibility::default()))
         .with_children(|p| {
-            p.spawn((t("KERNEL PANIC", 96.0, Color::srgb(1.0, 0.15, 0.2)), TextShadow { offset: Vec2::new(4.0, 4.0), color: Color::srgba(0.4, 0.0, 0.4, 0.9) }));
+            p.spawn((Text::new("KERNEL PANIC"), TextFont { font: crate::fonts::shade(), font_size: 90.0, ..default() }, TextColor(Color::srgb(1.0, 0.15, 0.2)), TextShadow { offset: Vec2::new(4.0, 4.0), color: Color::srgba(0.4, 0.0, 0.4, 0.9) }));
             p.spawn(t("process 0xXZ terminated unexpectedly", 20.0, DIM));
             p.spawn(t("ENTER  reboot from last checkpoint", 26.0, Color::WHITE));
         });
@@ -242,7 +246,7 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
     commands
         .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(16.0), ..full() }, BackgroundColor(Color::srgba(0.02, 0.0, 0.1, 0.8)), Group(G::Ending), Visibility::default()))
         .with_children(|p| {
-            title_row(p, "THE PORT IS OPEN", 70.0);
+            title_row(p, "THE PORT IS OPEN", 60.0, crate::fonts::shade());
             p.spawn((Node { max_width: Val::Px(820.0), ..default() }, t("", 22.0, Color::WHITE), HudText::EndText));
         });
 
@@ -258,7 +262,7 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
             Visibility::default(),
         ))
         .with_children(|p| {
-            title_row(p, "NEON DUST", 96.0);
+            title_row(p, "NEON DUST", 96.0, crate::fonts::logo());
             p.spawn((Node { margin: UiRect::top(Val::Px(40.0)), ..default() }, t("", 26.0, Color::WHITE), HudText::LoadStatus, TextShadow { offset: Vec2::new(2.0, 2.0), color: Color::BLACK }));
             bar(p, Bar::Load, 520.0, 12.0, Color::srgb(1.0, 0.2, 0.8));
             p.spawn((t("", 16.0, CYAN), HudText::LoadPct));

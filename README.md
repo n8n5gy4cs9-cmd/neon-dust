@@ -11,3 +11,6 @@ Full guide, manual, screenshots and console reference: open `docs/index.html` (r
 Docs: `PRD.md`, `PLAN.md`, `TASKS.md`, `commands.txt`.
 
 Controls: WASD, Shift boost/sprint, Space drift/jump, LMB/RMB fire, F enter/exit car, 1-4 weapons, E hack, Esc pause, ` console.
+
+Fonts (SIL OFL, embedded in `src/fonts/`): VT323, Share Tech Mono (terminal text); Monoton, Bungee Shade (titles).
+Shader inspiration: stduhpf (synthwave sunset), Gruberk (Active Matter loading splash, PI tuned to 3.6).

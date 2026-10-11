@@ -40,14 +40,15 @@ gallery = "\n".join(f"<figure><a href='shots/{f}'><img src='shots/{f}' alt='{htm
 page = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Neon Dust</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Bungee+Shade&family=Monoton&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#07021a;--bg2:#12062e;--cy:#19f2ff;--mg:#ff2bd0;--or:#ff9a2a;--tx:#e9defc;--dim:#9a88c8}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#3a0a5e 0,#12062e 45%,#07021a 100%) fixed;color:var(--tx);font:16px/1.6 ui-monospace,Menlo,Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#3a0a5e 0,#12062e 45%,#07021a 100%) fixed;color:var(--tx);font:20px/1.5 'VT323','Share Tech Mono',ui-monospace,monospace}
 header{min-height:78vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 16px;position:relative;overflow:hidden}
 header:before{content:"";position:absolute;left:0;right:0;bottom:0;height:46%;background:
 linear-gradient(transparent,rgba(255,43,208,.18)),repeating-linear-gradient(90deg,rgba(255,43,208,.5) 0 1px,transparent 1px 60px),repeating-linear-gradient(0deg,rgba(25,242,255,.35) 0 1px,transparent 1px 38px);transform:perspective(420px) rotateX(58deg);transform-origin:bottom;mask:linear-gradient(transparent,#000 40%)}
 header:after{content:"";position:absolute;width:340px;height:340px;border-radius:50%;top:6%;background:repeating-linear-gradient(0deg,transparent 0 14px,#07021a 14px 18px),linear-gradient(#ffd23a,#ff2bd0);opacity:.55;filter:blur(1px);z-index:0}
-h1{font-size:clamp(48px,11vw,140px);margin:0;letter-spacing:.04em;background:linear-gradient(90deg,var(--cy),var(--mg),var(--or));-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 40px rgba(255,43,208,.35);position:relative;z-index:1}
+h1{font-family:'Monoton',sans-serif;font-weight:400;font-size:clamp(44px,10vw,130px);margin:0;letter-spacing:.04em;background:linear-gradient(90deg,var(--cy),var(--mg),var(--or));-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 40px rgba(255,43,208,.35);position:relative;z-index:1}
 .tag{color:var(--dim);position:relative;z-index:1;max-width:760px}
 .btns{margin-top:22px;position:relative;z-index:1;display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
 a.b{color:#07021a;background:linear-gradient(90deg,var(--cy),var(--mg));padding:10px 20px;border-radius:4px;text-decoration:none;font-weight:700}
@@ -55,13 +56,13 @@ a.b.o{background:none;color:var(--cy);border:1px solid var(--cy)}
 nav{position:sticky;top:0;background:#07021acc;backdrop-filter:blur(8px);border-bottom:1px solid #ff2bd055;padding:10px 16px;z-index:5;display:flex;gap:18px;flex-wrap:wrap;justify-content:center}
 nav a{color:var(--cy);text-decoration:none}
 main{max-width:1060px;margin:0 auto;padding:10px 16px 80px}
-h2{color:var(--mg);border-bottom:1px solid #ff2bd055;padding-bottom:6px;margin-top:60px}
+h2{font-family:'Bungee Shade',sans-serif;font-weight:400;color:var(--mg);border-bottom:1px solid #ff2bd055;padding-bottom:6px;margin-top:60px}
 h3{color:var(--cy);margin-top:28px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
 figure{margin:0;background:#12062e;border:1px solid #ff2bd044;border-radius:6px;overflow:hidden}
 figure img{width:100%;display:block}figcaption{padding:8px 12px;color:var(--dim);font-size:14px}
 table.t{border-collapse:collapse;width:100%;margin:8px 0}table.t td,table.t th{border-bottom:1px solid #ff2bd02a;padding:6px 10px;vertical-align:top;text-align:left}
-th{color:var(--or)}code{color:var(--cy);background:#0e0425;padding:1px 6px;border-radius:3px}kbd{background:#1c0b44;border:1px solid var(--mg);border-radius:4px;padding:0 6px;color:#fff}
+th{color:var(--or)}code,pre{font-family:'Share Tech Mono',monospace}code{color:var(--cy);background:#0e0425;padding:1px 6px;border-radius:3px}kbd{background:#1c0b44;border:1px solid var(--mg);border-radius:4px;padding:0 6px;color:#fff}
 .badge{font-size:11px;color:#07021a;background:var(--or);border-radius:3px;padding:0 5px}
 .card{background:#12062e;border:1px solid #19f2ff33;border-radius:6px;padding:14px 18px}
 .quote{border-left:3px solid var(--mg);padding-left:14px;color:#ffd3f5;margin:10px 0}
@@ -152,7 +153,7 @@ COMMANDS
 <li>Screenshots: <code>./run_shot.sh out.png 20 --play --cmd "cheats on"</code> (xvfb + Mesa lavapipe).</li></ul>
 
 <h2 id="credits">Credits</h2>
-<p>Visual inspiration: stduhpf's <i>another synthwave sunset thing</i> (Shadertoy), Gruberk's <i>Active Matter loading splash</i> (loading kaleidoscope structure, used under its free-to-use licence; PI tuned to 3.6), and other Shadertoy synthwave pieces. Gameplay references: DustRacing2D, OpenRW, nordrep. Built with Rust and Bevy.</p>
+<p>Visual inspiration: stduhpf's <i>another synthwave sunset thing</i> (Shadertoy), Gruberk's <i>Active Matter loading splash</i> (loading kaleidoscope structure, used under its free-to-use licence; PI tuned to 3.6), and other Shadertoy synthwave pieces. Gameplay references: DustRacing2D, OpenRW, nordrep. Fonts (SIL OFL): VT323, Share Tech Mono, Monoton, Bungee Shade (Google Fonts). Built with Rust and Bevy.</p>
 </main>
 <footer>NEON DUST &middot; ride the dust, find the Port.</footer>
 </body></html>"""

@@ -83,9 +83,9 @@ fn setup_console(mut commands: Commands) {
         ))
         .with_children(|p| {
             for i in 0..LINES {
-                p.spawn((Text::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(Color::WHITE), ConLine(i)));
+                p.spawn((Text::new(""), TextFont { font: crate::fonts::mono(), font_size: 15.0, ..default() }, TextColor(Color::WHITE), ConLine(i)));
             }
-            p.spawn((Text::new(""), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.1, 0.95, 1.0)), Node { margin: UiRect::top(Val::Auto), ..default() }, ConInput));
+            p.spawn((Text::new(""), TextFont { font: crate::fonts::mono(), font_size: 18.0, ..default() }, TextColor(Color::srgb(0.1, 0.95, 1.0)), Node { margin: UiRect::top(Val::Auto), ..default() }, ConInput));
         });
 }
 

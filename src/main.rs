@@ -4,6 +4,7 @@ mod commands;
 mod console;
 mod capture;
 mod enemies;
+mod fonts;
 mod fx;
 mod game;
 mod meshgen;
@@ -21,11 +22,13 @@ mod world;
 use bevy::prelude::*;
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window { title: "Neon Dust".into(), ..default() }),
-            ..default()
-        }))
+    let mut app = App::new();
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window { title: "Neon Dust".into(), ..default() }),
+        ..default()
+    }));
+    fonts::init(&mut app);
+    app
         .init_resource::<settings::Cvars>()
         .add_plugins((
             world::WorldPlugin,

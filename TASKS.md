@@ -1,7 +1,7 @@
 # Neon Dust — Task Board
 _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ = optional. Update this file with every commit._
 
-**Progress: 52/78 tasks done** · version 0.1.0 · updated 2026-10-11
+**Progress: 54/80 tasks done** · version 0.1.0 · updated 2026-10-11
 
 **WHERE TO CONTINUE:** World, vehicle, on-foot, weapons, fx, enemies, audio and story logic all compile and run (software-rendered screenshots verified). NEXT: playtest/balance pass, split-screen co-op (optional M12), tunnel/menu shader extras (M10.7-9), release QA (M13).
 
@@ -95,13 +95,14 @@ _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ =
 - [x] **M9.4** Terminal hack mechanic (hold E), sentry gate
 - [ ] **M9.5** Extra side missions (time trial, wave defence) ★
 
-## M10 — UI  (6/9)
+## M10 — UI  (7/10)
 - [x] **M10.1** Loading splash: kaleidoscope raymarch shader (Shadertoy "Active Matter" structure, PI tuned 3.6/4.1) + progress bar + cool rotating status text
 - [x] **M10.2** Title menu: gradient letter title, controls, story blurb, blinking prompt
 - [x] **M10.3** HUD: speed, boost bar, integrity bar, weapon/ammo, objective + bearing, score, crosshair
 - [x] **M10.4** Radar, toasts, dialogue box with typing effect, boss bar, hack bar
 - [x] **M10.5** Damage vignette, FPS counter
 - [x] **M10.6** Pause / Kernel Panic / Ending overlays
+- [x] **M10.0** Fonts: VT323 + Share Tech Mono for HUD/menus/console, Monoton + Bungee Shade for logo/titles (embedded OFL TTFs in src/fonts)
 - [ ] **M10.7** Tunnel effect (Shadertoy tXGGRD-style) for boot intro and ending ★
 - [ ] **M10.8** Reflective neon-city water band behind menu (fdffz2-style) ★
 - [ ] **M10.9** Gradient text shader (ttBGRD-style) for title ★
@@ -121,7 +122,10 @@ _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ =
 - [ ] **M12.4** Per-viewport HUD; shared world tick; enemy targeting nearest player
 - [ ] **M12.5** `split 1|2` console command
 
-## M13 — Release & QA  (0/3)
+## M13 — Release & QA  (0/6)
+- [~] **M13.0** **MUST build & run on macOS (Apple Silicon + Intel)** — _no Linux-only deps in Cargo.toml (alsa/udev are system libs only on Linux); `build-mac.sh` makes NeonDust.app; cursor grab uses Locked (supported by winit on macOS); cross-check from Linux is impossible (C toolchain), so it needs verification on a real Mac_
+- [ ] **M13.0a** macOS: verify Metal render of custom WGSL shaders (neon/sky/loading), audio via CoreAudio, console backtick key (IntlBackslash fallback), fullscreen
+- [ ] **M13.0b** Windows + Linux packaging (later) ★
 - [ ] **M13.1** Release build check + perf pass (view radius, particle caps)
 - [ ] **M13.2** Final screenshots for the HTML page
 - [ ] **M13.3** Final docs pass (README, TASKS, PRD, commands.txt)
