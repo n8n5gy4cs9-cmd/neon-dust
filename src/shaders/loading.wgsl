@@ -39,10 +39,12 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let rot = mat2x2<f32>(cos(a), sin(a), -sin(a), cos(a));
     let ray_dir = normalize(vec3<f32>(uv, 1.0));
     let acc = kal_march(ray_dir, rot, time * 0.35);
-    var col = 1.0 - exp(-acc.rgb / 9000.0);
-    // synthwave grade: push toward magenta/cyan, vignette
-    col = pow(col, vec3<f32>(1.25));
-    col = mix(vec3<f32>(dot(col, vec3<f32>(0.3, 0.5, 0.2))), col, 1.4) * vec3<f32>(1.1, 0.8, 1.2);
+    var col = 1.0 - exp(-acc.rgb / 38000.0);
+    col = pow(col, vec3<f32>(1.6));
+    let lum = dot(col, vec3<f32>(0.3, 0.5, 0.2));
+    // synthwave grade: dark violet base, magenta mids, cyan/white highlights
+    let grade = mix(vec3<f32>(0.05, 0.0, 0.18), vec3<f32>(1.0, 0.1, 0.7), smoothstep(0.0, 0.5, lum));
+    col = mix(grade, vec3<f32>(0.2, 0.95, 1.0), smoothstep(0.45, 0.9, lum)) * (0.4 + lum * 1.6);
     let v = 1.0 - 0.45 * dot(uv * 0.5, uv * 0.5);
     return vec4<f32>(col * v, 1.0);
 }

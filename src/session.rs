@@ -21,6 +21,7 @@ impl Plugin for SessionPlugin {
             .init_resource::<SfxQueue>()
             .init_resource::<Checkpoint>()
             .init_resource::<ConsoleOpen>()
+            .init_resource::<Loading>()
             .insert_resource(Control { in_car: false })
             .add_systems(OnTransition { exited: AppState::Menu, entered: AppState::Playing }, new_game)
             .add_systems(OnTransition { exited: AppState::Dead, entered: AppState::Playing }, respawn)
@@ -42,13 +43,21 @@ fn cursor_grab(state: Res<State<AppState>>, console: Res<ConsoleOpen>, mut win: 
     }
 }
 
-fn menu_input(keys: Res<ButtonInput<KeyCode>>, state: Res<State<AppState>>, mut next: ResMut<NextState<AppState>>, console: Res<ConsoleOpen>) {
-    if console.0 {
+fn menu_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    state: Res<State<AppState>>,
+    mut next: ResMut<NextState<AppState>>,
+    console: Res<ConsoleOpen>,
+    loading: Res<Loading>,
+    story: Res<crate::story::Story>,
+) {
+    if console.0 || !loading.done {
         return;
     }
     let go = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space);
     match state.get() {
-        AppState::Menu | AppState::Dead | AppState::Ending if go => next.set(AppState::Playing),
+        AppState::Menu | AppState::Dead if go => next.set(AppState::Playing),
+        AppState::Ending if go && story.ending > 0 => next.set(AppState::Playing),
         AppState::Paused if go => next.set(AppState::Playing),
         _ => {}
     }

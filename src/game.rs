@@ -153,3 +153,11 @@ impl Toasts {
 
 #[derive(Resource, Default)]
 pub struct ConsoleOpen(pub bool);
+
+/// Loading splash state (audio synthesis + first chunks).
+#[derive(Resource, Default)]
+pub struct Loading {
+    pub done: bool,
+    pub t: f32,
+    pub progress: f32,
+}

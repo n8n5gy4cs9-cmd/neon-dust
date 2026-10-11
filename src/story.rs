@@ -477,8 +477,10 @@ fn ending_input(keys: Res<ButtonInput<KeyCode>>, mut s: ResMut<Story>) {
     if s.ending == 0 {
         if keys.just_pressed(KeyCode::Digit1) {
             s.ending = 1;
+            s.pending = Some(Step::Free);
         } else if keys.just_pressed(KeyCode::Digit2) {
             s.ending = 2;
+            s.pending = Some(Step::Free);
         }
     }
 }

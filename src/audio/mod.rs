@@ -11,7 +11,14 @@ use crate::world::Focus;
 use bevy::audio::{AudioSink, AudioSinkPlayback, PlaybackSettings, Volume};
 use bevy::prelude::*;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// 0..=7 generation progress for the loading screen.
+pub static AUDIO_STAGE: AtomicU32 = AtomicU32::new(0);
+pub fn audio_progress() -> f32 {
+    AUDIO_STAGE.load(Ordering::Relaxed) as f32 / 7.0
+}
 
 #[derive(Resource, Default)]
 pub struct MusicCtl {
@@ -61,12 +68,18 @@ impl Plugin for GameAudioPlugin {
         std::thread::spawn(move || {
             let mut rng = Rng::new(1234);
             let sfx = ALL_SFX.iter().map(|s| (*s, synth::wav_mono(&sfx::make(*s, &mut rng)))).collect();
+            AUDIO_STAGE.store(1, Ordering::Relaxed);
             let engine = synth::wav_mono(&sfx::engine_loop());
             let skid = synth::wav_mono(&sfx::noise_loop(2600.0));
+            AUDIO_STAGE.store(2, Ordering::Relaxed);
             let menu = synth::wav_stereo(&music::render(&music::song_menu(), u32::MAX));
+            AUDIO_STAGE.store(3, Ordering::Relaxed);
             let da = synth::wav_stereo(&music::render(&music::song_drive(), music::PAD | music::ARP | music::BASS | music::KICK | music::HAT));
+            AUDIO_STAGE.store(4, Ordering::Relaxed);
             let db = synth::wav_stereo(&music::render(&music::song_drive(), music::SNARE | music::LEAD | music::TOM | music::FX));
+            AUDIO_STAGE.store(5, Ordering::Relaxed);
             let port = synth::wav_stereo(&music::render(&music::song_port(), u32::MAX));
+            AUDIO_STAGE.store(6, Ordering::Relaxed);
             let die = synth::wav_stereo(&music::stinger(false));
             if let Ok(dir) = std::env::var("ND_DUMP_AUDIO") {
                 let _ = std::fs::create_dir_all(&dir);
@@ -74,6 +87,7 @@ impl Plugin for GameAudioPlugin {
                     let _ = std::fs::write(format!("{dir}/{n}.wav"), t);
                 }
             }
+            AUDIO_STAGE.store(7, Ordering::Relaxed);
             *s2.lock().unwrap() = Some(Generated { sfx, engine, skid, tracks: vec![menu, da, db, port], die });
         });
         app.insert_resource(GenSlot(slot))
@@ -176,7 +190,7 @@ fn music_mix(
             } else if ctl.port {
                 [0.0, 0.0, 0.0, k]
             } else {
-                [0.0, k * 0.9, k * 0.85 * combat, 0.0]
+                [0.0, k * 0.9, k * 1.4 * combat, 0.0]
             }
         }
     };

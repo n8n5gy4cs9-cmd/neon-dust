@@ -11,6 +11,7 @@ mod session;
 mod story;
 mod settings;
 mod terrain;
+mod ui;
 mod vehicle;
 mod weapons;
 mod world;
@@ -36,6 +37,7 @@ fn main() {
             enemies::EnemiesPlugin,
             audio::GameAudioPlugin,
             story::StoryPlugin,
+            ui::UiPlugin,
         ))
         .run();
 }
