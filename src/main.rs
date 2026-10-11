@@ -1,8 +1,16 @@
+mod camera;
 mod capture;
+mod enemies;
+mod fx;
+mod game;
 mod meshgen;
 mod noise;
+mod player;
+mod session;
 mod settings;
 mod terrain;
+mod vehicle;
+mod weapons;
 mod world;
 
 use bevy::prelude::*;
@@ -14,19 +22,16 @@ fn main() {
             ..default()
         }))
         .init_resource::<settings::Cvars>()
-        .add_plugins((world::WorldPlugin, capture::CapturePlugin))
-        .add_systems(Update, demo_cam)
+        .add_plugins((
+            world::WorldPlugin,
+            capture::CapturePlugin,
+            session::SessionPlugin,
+            fx::FxPlugin,
+            vehicle::VehiclePlugin,
+            camera::CameraPlugin,
+            player::PlayerPlugin,
+            weapons::WeaponsPlugin,
+            enemies::EnemiesPlugin,
+        ))
         .run();
-}
-
-fn demo_cam(time: Res<Time>, mut cam: Query<&mut Transform, With<world::MainCam>>, mut focus: ResMut<world::Focus>) {
-    let sp = world::start_pos();
-    let t = time.elapsed_secs() * 0.1;
-    let c = Vec3::new(sp.x + t.cos() * 200.0, 0.0, sp.y + t.sin() * 200.0);
-    let g = terrain::ground_or_rim(c.x, c.z);
-    for mut tr in &mut cam {
-        tr.translation = c + Vec3::Y * (g + 60.0);
-        tr.look_at(Vec3::new(sp.x, g + 20.0, sp.y), Vec3::Y);
-    }
-    focus.0 = c;
 }

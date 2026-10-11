@@ -142,15 +142,15 @@ pub struct ChunkData {
 
 fn top_color(s: &Sample, slope: f32) -> Col {
     let h01 = (s.relief / 150.0).clamp(0.0, 1.0);
-    let low = Vec3::new(0.012, 0.05, 0.12);
-    let plain = Vec3::new(0.06, 0.02, 0.17);
-    let high = Vec3::new(0.30, 0.04, 0.34);
-    let peak = Vec3::new(0.35, 0.55, 0.85);
+    let low = Vec3::new(0.004, 0.012, 0.05);
+    let plain = Vec3::new(0.012, 0.004, 0.035);
+    let high = Vec3::new(0.045, 0.008, 0.075);
+    let peak = Vec3::new(0.06, 0.09, 0.16);
     let mut c = plain.lerp(high, (h01 * 1.6).min(1.0));
     c = c.lerp(peak, smoothstep(0.7, 1.0, h01));
     c = c.lerp(low, smoothstep(0.0, 6.0, -s.relief) * 0.8);
     let cliff = smoothstep(0.55, 0.9, slope);
-    c = c.lerp(Vec3::new(0.02, 0.02, 0.09), cliff * 0.7);
+    c = c.lerp(Vec3::new(0.01, 0.005, 0.04), cliff * 0.7);
     [c.x, c.y, c.z, (h01 + cliff * 0.3).clamp(0.0, 1.0)]
 }
 
@@ -294,7 +294,7 @@ pub fn build_chunk(cx: i32, cz: i32) -> ChunkData {
                     m.frustum(Vec3::ZERO, 0.35, 0.2, 3.2, 5, col(0.05, 0.03, 0.1, 0.0), false);
                     for k in 0..3 {
                         let r = 2.6 - k as f32 * 0.7;
-                        m.cone(Vec3::new(0.0, 2.0 + k as f32 * 1.9, 0.0), r, 3.2, 7, col(glow[0] * 0.25, glow[1] * 0.25, glow[2] * 0.25, 0.9), true);
+                        m.cone(Vec3::new(0.0, 2.0 + k as f32 * 1.9, 0.0), r, 3.2, 7, col(glow[0] * 0.12, glow[1] * 0.12, glow[2] * 0.12, 0.55), true);
                     }
                 });
                 colliders.push(Prop { pos: Vec2::new(px, pz), radius: 0.6 * scale });

@@ -18,9 +18,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let t = globals.time;
     var c: vec3<f32>;
     if y >= 0.0 {
-        c = mix(vec3<f32>(1.2, 0.28, 0.55), vec3<f32>(0.30, 0.04, 0.5), smoothstep(0.0, 0.35, y));
-        c = mix(c, vec3<f32>(0.015, 0.0, 0.1), smoothstep(0.25, 0.9, y));
-        c += vec3<f32>(1.0, 0.45, 0.1) * exp(-y * 18.0) * 0.6;
+        c = mix(vec3<f32>(1.3, 0.2, 0.45), vec3<f32>(0.28, 0.02, 0.42), smoothstep(0.0, 0.3, y));
+        c = mix(c, vec3<f32>(0.01, 0.0, 0.08), smoothstep(0.2, 0.8, y));
+        c += vec3<f32>(1.6, 0.6, 0.12) * exp(-y * 22.0) * 0.8;
         // stars
         let p = d.xz / (y + 0.35) * 90.0;
         let h = hash(floor(p));
@@ -38,7 +38,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // retro sun with cut stripes
     let sd = dot(d, SUN);
     let ang = acos(clamp(sd, -1.0, 1.0));
-    let R = 0.11;
+    let R = 0.17;
     let rel = (y - SUN.y) / R;
     let low = clamp(1.0 - smoothstep(-0.9, 0.2, rel), 0.0, 0.9);
     let keep = step(low, fract(rel * 6.0));

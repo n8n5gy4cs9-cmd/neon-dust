@@ -13,6 +13,13 @@ pub struct CapturePlugin;
 impl Plugin for CapturePlugin {
     fn build(&self, app: &mut App) {
         let args: Vec<String> = std::env::args().collect();
+        if args.iter().any(|a| a == "--play") {
+            app.add_systems(Update, |mut n: ResMut<NextState<crate::game::AppState>>, s: Res<State<crate::game::AppState>>, t: Res<Time<Real>>| {
+                if *s.get() == crate::game::AppState::Menu && t.elapsed_secs() > 4.0 {
+                    n.set(crate::game::AppState::Playing);
+                }
+            });
+        }
         if let Some(i) = args.iter().position(|a| a == "--shot") {
             let path = args.get(i + 1).cloned().unwrap_or("shot.png".into());
             let at = args.get(i + 2).and_then(|s| s.parse().ok()).unwrap_or(6.0);

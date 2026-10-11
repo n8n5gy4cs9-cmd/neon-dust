@@ -46,21 +46,35 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     var emit = vec3<f32>(0.0);
 
     if mode < 0.5 {
-        // ---- terrain: neon grid + contour wireframe ----
-        let flat_k = smoothstep(0.6, 0.9, n.y);
-        let fade = 1.0 - smoothstep(120.0, 650.0, dist);
-        let g1 = grid_line(wp.xz, 8.0, 1.2) * fade * flat_k;
-        let g2 = grid_line(wp.xz, 64.0, 2.0) * (1.0 - smoothstep(300.0, 1000.0, dist));
+        // ---- terrain: synthwave tessellated neon lines on near-black ground ----
+        let h01 = clamp(glowv, 0.0, 1.0);
+        let steep = 1.0 - smoothstep(0.55, 0.9, n.y);
+        let gp = wp.xz / 5.0;
+        let fwv = max(fwidth(gp.x), fwidth(gp.y));
+        let aa = 1.0 - smoothstep(0.12, 0.55, fwv);
+        let fl = abs(fract(gp - 0.5) - 0.5) / (fwidth(gp) + vec2<f32>(0.0001));
+        let dg = min(fl.x, fl.y);
+        // pseudo tessellation: diagonal lines
+        let dp = vec2<f32>(gp.x + gp.y, gp.x - gp.y) * 0.5;
+        let fd = abs(fract(dp - 0.5) - 0.5) / (fwidth(dp) + vec2<f32>(0.0001));
+        let dd = min(fd.x, fd.y);
+        let lines = (1.0 - min(dg, 1.0)) + (1.0 - min(dd, 1.0)) * 0.45;
+        let halo = exp(-dg * 0.5) * 0.35 + exp(-dd * 0.6) * 0.12;
+        let big = abs(fract(wp.xz / 40.0 - 0.5) - 0.5) / (fwidth(wp.xz / 40.0) + vec2<f32>(0.0001));
+        let bigl = 1.0 - min(min(big.x, big.y), 1.0);
+        let pink = vec3<f32>(1.0, 0.1, 0.7);
+        let cyan = vec3<f32>(0.05, 0.9, 1.0);
+        let lc = mix(pink, cyan, clamp(h01 * 1.4 + steep * 0.5, 0.0, 1.0));
+        let dfade = 1.0 / (1.0 + dist * 0.0018);
         let hv = wp.y / np.z;
-        let cl = 1.0 - min(abs(fract(hv - 0.5) - 0.5) / (fwidth(hv) * 1.5 + 0.0001), 1.0);
-        let cfade = 1.0 - smoothstep(400.0, 1200.0, dist);
-        let ccol = mix(vec3<f32>(1.0, 0.1, 0.75), vec3<f32>(0.1, 0.9, 1.0), clamp(glowv, 0.0, 1.0));
-        emit += ncol.rgb * (g1 * 0.45 + g2 * 1.3) * np.y;
-        emit += ccol * cl * cfade * 1.8 * (0.35 + 0.65 * (1.0 - flat_k));
-        emit *= 1.0 + 0.25 * sin(t * 2.0 + wp.x * 0.02 + wp.z * 0.02);
-        // fresnel ridge glow on cliffs
-        emit += ccol * pow(1.0 - max(dot(n, vdir), 0.0), 4.0) * 0.5 * (1.0 - flat_k);
-        out.color = vec4<f32>(out.color.rgb + emit * np.w, out.color.a);
+        let cl = 1.0 - min(abs(fract(hv - 0.5) - 0.5) / (fwidth(hv) * 1.4 + 0.0001), 1.0);
+        let mean_glow = 0.18;
+        var e = lc * ((lines + halo) * aa + mean_glow * (1.0 - aa)) * 2.6 * dfade;
+        e += cyan * bigl * 1.4 * dfade * aa;
+        e += mix(pink, cyan, h01) * cl * 2.2 * dfade * (0.25 + 0.75 * steep);
+        e *= 1.0 + 0.2 * sin(t * 2.0 - dist * 0.03);
+        e += lc * pow(1.0 - max(dot(n, vdir), 0.0), 4.0) * 0.6 * steep;
+        out.color = vec4<f32>(out.color.rgb * 0.5 + e * np.w, out.color.a);
     } else if mode < 1.5 {
         // ---- glowing solids (props, vehicles, enemies) ----
         let base = pbr_input.material.base_color.rgb;

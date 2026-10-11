@@ -196,15 +196,15 @@ fn setup_world(
             color: FOG_COLOR,
             directional_light_color: Color::srgb(1.0, 0.5, 0.35),
             directional_light_exponent: 24.0,
-            falloff: FogFalloff::from_visibility_colors(900.0, Color::srgb(0.35, 0.2, 0.65), Color::srgb(0.75, 0.25, 0.6)),
+            falloff: FogFalloff::from_visibility_colors(900.0, Color::srgb(0.22, 0.05, 0.32), Color::srgb(1.0, 0.32, 0.45)),
         },
         Transform::from_xyz(0.0, 80.0, 0.0),
     ));
 
     // lights --------------------------------------------------------------
-    commands.insert_resource(AmbientLight { color: Color::srgb(0.3, 0.2, 0.95), brightness: 200.0, ..default() });
+    commands.insert_resource(AmbientLight { color: Color::srgb(0.35, 0.15, 0.8), brightness: 70.0, ..default() });
     commands.spawn((
-        DirectionalLight { color: Color::srgb(1.0, 0.62, 0.55), illuminance: 6500.0, shadows_enabled: true, ..default() },
+        DirectionalLight { color: Color::srgb(1.0, 0.62, 0.55), illuminance: 2800.0, shadows_enabled: true, ..default() },
         Transform::IDENTITY.looking_to(-SUN_DIR, Vec3::Y),
         CascadeShadowConfigBuilder { num_cascades: 3, maximum_distance: 280.0, first_cascade_far_bound: 25.0, overlap_proportion: 0.25, ..default() }.build(),
     ));
@@ -303,9 +303,9 @@ fn setup_world(
         meshes.add(mb.build())
     };
     let cloud_mats = [
-        std_mats.add(StandardMaterial { base_color: Color::srgba(1.0, 0.5, 0.75, 0.55), unlit: true, alpha_mode: AlphaMode::Blend, fog_enabled: false, ..default() }),
-        std_mats.add(StandardMaterial { base_color: Color::srgba(0.55, 0.35, 1.0, 0.5), unlit: true, alpha_mode: AlphaMode::Blend, fog_enabled: false, ..default() }),
-        std_mats.add(StandardMaterial { base_color: Color::srgba(1.0, 0.65, 0.4, 0.45), unlit: true, alpha_mode: AlphaMode::Blend, fog_enabled: false, ..default() }),
+        std_mats.add(StandardMaterial { base_color: Color::srgba(0.9, 0.3, 0.6, 0.3), unlit: true, alpha_mode: AlphaMode::Blend, fog_enabled: false, ..default() }),
+        std_mats.add(StandardMaterial { base_color: Color::srgba(0.4, 0.2, 0.9, 0.3), unlit: true, alpha_mode: AlphaMode::Blend, fog_enabled: false, ..default() }),
+        std_mats.add(StandardMaterial { base_color: Color::srgba(1.0, 0.5, 0.3, 0.25), unlit: true, alpha_mode: AlphaMode::Blend, fog_enabled: false, ..default() }),
     ];
     let mut rng = Rng::new(s as u64 + 5);
     for i in 0..110 {
@@ -327,8 +327,8 @@ fn setup_world(
     // floating motes -------------------------------------------------------
     let mote_mesh = meshes.add(Sphere::new(0.12).mesh().ico(1).unwrap());
     let mote_mats = [
-        std_mats.add(StandardMaterial { base_color: Color::BLACK, emissive: LinearRgba::new(0.2, 2.5, 3.0, 1.0), unlit: true, ..default() }),
-        std_mats.add(StandardMaterial { base_color: Color::BLACK, emissive: LinearRgba::new(3.0, 0.3, 2.2, 1.0), unlit: true, ..default() }),
+        std_mats.add(StandardMaterial { base_color: Color::linear_rgb(0.2, 2.5, 3.0), unlit: true, ..default() }),
+        std_mats.add(StandardMaterial { base_color: Color::linear_rgb(3.0, 0.3, 2.2), unlit: true, ..default() }),
     ];
     let mut rng = Rng::new(77);
     for i in 0..220 {
@@ -389,10 +389,8 @@ fn apply_cvars(
     }
     for (mut b, mut f, mut p) in &mut cam {
         b.intensity = cv.bloom;
-        f.falloff = FogFalloff::from_visibility_colors(cv.fog_vis, Color::srgb(0.35, 0.2, 0.65), Color::srgb(0.75, 0.25, 0.6));
-        if let Projection::Perspective(pp) = &mut *p {
-            pp.fov = cv.fov.to_radians();
-        }
+        f.falloff = FogFalloff::from_visibility_colors(cv.fog_vis, Color::srgb(0.22, 0.05, 0.32), Color::srgb(1.0, 0.32, 0.45));
+        let _ = &mut p;
     }
 }
 
