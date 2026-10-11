@@ -13,6 +13,8 @@ use bevy::render::render_resource::{AsBindGroup, ShaderRef};
 use bevy::ui::{MaterialNode, UiMaterial, UiMaterialPlugin};
 
 pub const LOAD_SHADER: Handle<Shader> = weak_handle!("4b1d2e2e-7c53-4c0e-9f1a-0a5e1c3d9b03");
+pub const TUNNEL_SHADER: Handle<Shader> = weak_handle!("4b1d2e2e-7c53-4c0e-9f1a-0a5e1c3d9b04");
+pub const CITY_SHADER: Handle<Shader> = weak_handle!("4b1d2e2e-7c53-4c0e-9f1a-0a5e1c3d9b05");
 /// Tunable "PI" fed to the loading shader (user asked for 3.6 or 4.1).
 pub const LOAD_PI: f32 = 3.6;
 
@@ -27,8 +29,37 @@ impl UiMaterial for LoadMat {
     }
 }
 
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct TunnelMat {
+    #[uniform(0)]
+    pub p: Vec4,
+}
+impl UiMaterial for TunnelMat {
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Handle(TUNNEL_SHADER)
+    }
+}
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct CityMat {
+    #[uniform(0)]
+    pub p: Vec4,
+}
+impl UiMaterial for CityMat {
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Handle(CITY_SHADER)
+    }
+}
+#[derive(Component)]
+struct IntroRoot;
+#[derive(Component)]
+struct GradLetter {
+    i: usize,
+    n: usize,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum G {
+    Intro,
     Loading,
     Menu,
     Hud,
@@ -59,6 +90,7 @@ enum HudText {
     LoadTip,
     Prompt,
     EndText,
+    IntroLog,
 }
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum Bar {
@@ -83,9 +115,11 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::load_internal_asset!(app, LOAD_SHADER, "shaders/loading.wgsl", Shader::from_wgsl);
-        app.add_plugins(UiMaterialPlugin::<LoadMat>::default())
+        bevy::asset::load_internal_asset!(app, TUNNEL_SHADER, "shaders/tunnel.wgsl", Shader::from_wgsl);
+        bevy::asset::load_internal_asset!(app, CITY_SHADER, "shaders/city.wgsl", Shader::from_wgsl);
+        app.add_plugins((UiMaterialPlugin::<LoadMat>::default(), UiMaterialPlugin::<TunnelMat>::default(), UiMaterialPlugin::<CityMat>::default()))
             .add_systems(Startup, setup_ui)
-            .add_systems(Update, (loading_update, groups, hud_texts, hud_bars, radar, overlays));
+            .add_systems(Update, (loading_update, groups, hud_texts, hud_bars, radar, overlays, fx_ui_update, grad_letters));
     }
 }
 
@@ -108,6 +142,13 @@ fn grad(k: f32) -> Color {
     Color::srgb(v.x, v.y, v.z)
 }
 
+fn grad_wrap(k: f32) -> Color {
+    let (a, b, c) = (Vec3::new(0.1, 0.95, 1.0), Vec3::new(1.0, 0.15, 0.8), Vec3::new(1.0, 0.6, 0.15));
+    let x = k.rem_euclid(1.0) * 3.0;
+    let v = if x < 1.0 { a.lerp(b, x) } else if x < 2.0 { b.lerp(c, x - 1.0) } else { c.lerp(a, x - 2.0) };
+    Color::srgb(v.x, v.y, v.z)
+}
+
 fn bar(p: &mut ChildSpawnerCommands, kind: Bar, w: f32, h: f32, c: Color) {
     p.spawn((Node { width: Val::Px(w), height: Val::Px(h), border: UiRect::all(Val::Px(1.0)), ..default() }, BorderColor(Color::srgba(1.0, 1.0, 1.0, 0.35)), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)), BarBox(kind)))
         .with_children(|b| {
@@ -117,7 +158,7 @@ fn bar(p: &mut ChildSpawnerCommands, kind: Bar, w: f32, h: f32, c: Color) {
 
 fn title_row(p: &mut ChildSpawnerCommands, s: &str, size: f32, font: Handle<Font>) {
     p.spawn(Node { flex_direction: FlexDirection::Row, ..default() }).with_children(|r| {
-        let n = s.chars().count().max(1);
+        let n = s.chars().count();
         for (i, ch) in s.chars().enumerate() {
             if ch == ' ' {
                 r.spawn(Node { width: Val::Px(size * 0.4), ..default() });
@@ -128,12 +169,13 @@ fn title_row(p: &mut ChildSpawnerCommands, s: &str, size: f32, font: Handle<Font
                 TextFont { font: font.clone(), font_size: size, ..default() },
                 TextColor(grad(i as f32 / (n - 1).max(1) as f32)),
                 TextShadow { offset: Vec2::new(size * 0.04, size * 0.04), color: Color::srgba(0.8, 0.0, 0.6, 0.9) },
+                GradLetter { i, n },
             ));
         }
     });
 }
 
-fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
+fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>, mut tmats: ResMut<Assets<TunnelMat>>, mut cmats: ResMut<Assets<CityMat>>) {
     // ---------------- HUD ----------------
     commands
         .spawn((Node { flex_direction: FlexDirection::Column, ..full() }, Group(G::Hud), Visibility::default()))
@@ -216,6 +258,11 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
     commands
         .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(10.0), ..full() }, Group(G::Menu), Visibility::default()))
         .with_children(|p| {
+            // reflective neon-city water band behind the menu text
+            p.spawn((
+                Node { position_type: PositionType::Absolute, left: Val::Px(0.0), bottom: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(34.0), ..default() },
+                MaterialNode(cmats.add(CityMat { p: Vec4::new(0.0, 1.0, 0.0, 0.0) })),
+            ));
             p.spawn(Node { margin: UiRect::bottom(Val::Px(0.0)), ..default() }).with_children(|r| title_row(r, "NEON DUST", 128.0, crate::fonts::logo()));
             p.spawn(t("A SYNTHWAVE ROAD-RAGE ODYSSEY THROUGH THE SKY OF A DEAD MACHINE", 18.0, DIM));
             p.spawn((Node { margin: UiRect::vertical(Val::Px(26.0)), ..default() }, t("PRESS ENTER", 34.0, Color::WHITE), HudText::Prompt));
@@ -244,10 +291,24 @@ fn setup_ui(mut commands: Commands, mut mats: ResMut<Assets<LoadMat>>) {
 
     // ---------------- Ending ----------------
     commands
-        .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(16.0), ..full() }, BackgroundColor(Color::srgba(0.02, 0.0, 0.1, 0.8)), Group(G::Ending), Visibility::default()))
+        .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(16.0), ..full() }, MaterialNode(tmats.add(TunnelMat { p: Vec4::new(0.0, 0.9, 0.8, 1.0) })), Group(G::Ending), Visibility::default()))
         .with_children(|p| {
             title_row(p, "THE PORT IS OPEN", 60.0, crate::fonts::shade());
             p.spawn((Node { max_width: Val::Px(820.0), ..default() }, t("", 22.0, Color::WHITE), HudText::EndText));
+        });
+
+    // ---------------- Boot intro tunnel ----------------
+    commands
+        .spawn((
+            Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, justify_content: JustifyContent::Center, padding: UiRect::left(Val::Percent(8.0)), row_gap: Val::Px(6.0), ..full() },
+            MaterialNode(tmats.add(TunnelMat { p: Vec4::new(0.0, 1.0, 2.2, 0.0) })),
+            GlobalZIndex(400),
+            Group(G::Intro),
+            IntroRoot,
+            Visibility::default(),
+        ))
+        .with_children(|p| {
+            p.spawn((t("", 30.0, Color::srgb(0.2, 1.0, 0.7)), HudText::IntroLog, TextShadow { offset: Vec2::new(2.0, 2.0), color: Color::BLACK }));
         });
 
     // ---------------- Loading splash ----------------
@@ -321,11 +382,13 @@ fn loading_update(
 fn groups(
     state: Res<State<AppState>>,
     loading: Res<Loading>,
+    intro: Res<Intro>,
     mut q: Query<(&Group, &mut Node)>,
 ) {
     let st = *state.get();
     for (g, mut n) in &mut q {
         let show = match g.0 {
+            G::Intro => intro.active && st == AppState::Playing,
             G::Loading => !loading.done,
             G::Menu => st == AppState::Menu && loading.done,
             G::Hud => matches!(st, AppState::Playing | AppState::Paused | AppState::Dead) && loading.done,
@@ -347,6 +410,7 @@ fn hud_texts(
     rig: Res<CamRig>,
     cv: Res<Cvars>,
     loading: Res<Loading>,
+    intro: Res<Intro>,
     mut toasts: ResMut<Toasts>,
     car: Query<(&Transform, &Vehicle), With<PlayerCar>>,
     boss: Query<&Enemy>,
@@ -444,6 +508,18 @@ fn hud_texts(
             HudText::LoadPct => text.0 = format!("[ {:>3}% ]   synth {}/7   islands {}", (loading.progress * 100.0) as i32, (audio::audio_progress() * 7.0) as i32, "streaming"),
             HudText::LoadTip => text.0 = TIPS[((loading.t / 4.0) as usize) % TIPS.len()].into(),
             HudText::Prompt => color.0 = Color::srgba(1.0, 1.0, 1.0, 0.35 + 0.65 * blink),
+            HudText::IntroLog => {
+                const LOG: [&str; 6] = [
+                    "XZ.EXE  v0.1  -- boot sequence",
+                    "[ OK ] mounting /dev/null",
+                    "[ OK ] allocating neon",
+                    "[ !! ] process table: NOT FOUND",
+                    "[ .. ] waking XZ ...",
+                    "[ OK ] you are inside the machine",
+                ];
+                let n = ((intro.t / 0.7) as usize + 1).min(LOG.len());
+                text.0 = LOG[..n].join("\n");
+            }
             HudText::EndText => {
                 text.0 = if story.ending == 0 {
                     "[1]  PULL THE PLUG - escape the machine\n[2]  STAY - become the new kernel".into()
@@ -513,5 +589,52 @@ fn radar(
 fn overlays(stats: Res<Stats>, mut v: Query<&mut BackgroundColor, With<Vignette>>) {
     for mut b in &mut v {
         b.0 = Color::srgba(1.0, 0.0, 0.1, (stats.hurt * 0.55).min(0.5));
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fx_ui_update(
+    time: Res<Time<Real>>,
+    mut intro: ResMut<Intro>,
+    state: Res<State<AppState>>,
+    mut tm: ResMut<Assets<TunnelMat>>,
+    mut cm: ResMut<Assets<CityMat>>,
+    q_t: Query<(&MaterialNode<TunnelMat>, Option<&IntroRoot>)>,
+    q_c: Query<&MaterialNode<CityMat>>,
+) {
+    let dt = time.delta_secs();
+    if intro.active {
+        intro.t += dt;
+        if intro.t > 5.2 || *state.get() != AppState::Playing {
+            intro.active = false;
+        }
+    }
+    let t = time.elapsed_secs();
+    for (m, is_intro) in &q_t {
+        if let Some(mm) = tm.get_mut(&m.0) {
+            if is_intro.is_some() {
+                let alpha = if intro.t < 4.0 { 1.0 } else { (1.0 - (intro.t - 4.0) / 1.2).clamp(0.0, 1.0) };
+                mm.p = Vec4::new(t, alpha, 2.2, 0.0);
+            } else {
+                mm.p = Vec4::new(t, 0.88, 0.8, 1.0);
+            }
+        }
+    }
+    for m in &q_c {
+        if let Some(mm) = cm.get_mut(&m.0) {
+            mm.p = Vec4::new(t, 1.0, 0.0, 0.0);
+        }
+    }
+}
+
+/// Animated gradient text (palette scrolls along the letters + a white shimmer sweep).
+/// Bevy UI text cannot take a custom material, so the "gradient text shader" runs per glyph on the CPU.
+fn grad_letters(time: Res<Time<Real>>, mut q: Query<(&GradLetter, &mut TextColor)>) {
+    let t = time.elapsed_secs();
+    for (g, mut c) in &mut q {
+        let x = g.i as f32 / (g.n.max(2) - 1) as f32;
+        let base = grad_wrap(x * 0.8 - t * 0.12);
+        let sweep = (-(((t * 0.35).fract() * 1.6 - 0.3) - x).powi(2) * 40.0).exp();
+        c.0 = base.mix(&Color::WHITE, sweep * 0.7);
     }
 }

@@ -1,7 +1,7 @@
 # Neon Dust — Task Board
 _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ = optional. Update this file with every commit._
 
-**Progress: 54/80 tasks done** · version 0.1.0 · updated 2026-10-11
+**Progress: 57/80 tasks done** · version 0.1.0 · updated 2026-10-11
 
 **WHERE TO CONTINUE:** World, vehicle, on-foot, weapons, fx, enemies, audio and story logic all compile and run (software-rendered screenshots verified). NEXT: playtest/balance pass, split-screen co-op (optional M12), tunnel/menu shader extras (M10.7-9), release QA (M13).
 
@@ -95,7 +95,7 @@ _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ =
 - [x] **M9.4** Terminal hack mechanic (hold E), sentry gate
 - [ ] **M9.5** Extra side missions (time trial, wave defence) ★
 
-## M10 — UI  (7/10)
+## M10 — UI  (10/10)
 - [x] **M10.1** Loading splash: kaleidoscope raymarch shader (Shadertoy "Active Matter" structure, PI tuned 3.6/4.1) + progress bar + cool rotating status text
 - [x] **M10.2** Title menu: gradient letter title, controls, story blurb, blinking prompt
 - [x] **M10.3** HUD: speed, boost bar, integrity bar, weapon/ammo, objective + bearing, score, crosshair
@@ -103,9 +103,9 @@ _Legend: `[x]` done · `[~]` in progress · `[ ]` todo · `[!]` blocked · ★ =
 - [x] **M10.5** Damage vignette, FPS counter
 - [x] **M10.6** Pause / Kernel Panic / Ending overlays
 - [x] **M10.0** Fonts: VT323 + Share Tech Mono for HUD/menus/console, Monoton + Bungee Shade for logo/titles (embedded OFL TTFs in src/fonts)
-- [ ] **M10.7** Tunnel effect (Shadertoy tXGGRD-style) for boot intro and ending ★
-- [ ] **M10.8** Reflective neon-city water band behind menu (fdffz2-style) ★
-- [ ] **M10.9** Gradient text shader (ttBGRD-style) for title ★
+- [x] **M10.7** Tunnel effect (own tXGGRD-style shader, tunnel.wgsl) for the boot intro (typed boot log) and the ending backdrop
+- [x] **M10.8** Reflective neon-city water band behind menu (own fdffz2-style shader, city.wgsl: parallax skyline, windows, rippling reflection)
+- [x] **M10.9** Animated gradient text (ttBGRD-style palette scroll + shimmer sweep) — _per-glyph on the CPU: Bevy UI text cannot take a custom material_
 
 ## M11 — Console & cheats (nordrep-style)  (6/6)
 - [x] **M11.1** Pure command registry + parser + aliases + tab completion + history (core/commands)

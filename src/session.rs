@@ -22,6 +22,7 @@ impl Plugin for SessionPlugin {
             .init_resource::<Checkpoint>()
             .init_resource::<ConsoleOpen>()
             .init_resource::<Loading>()
+            .init_resource::<Intro>()
             .insert_resource(Control { in_car: false })
             .add_systems(OnTransition { exited: AppState::Menu, entered: AppState::Playing }, new_game)
             .add_systems(OnTransition { exited: AppState::Dead, entered: AppState::Playing }, respawn)
@@ -29,8 +30,8 @@ impl Plugin for SessionPlugin {
     }
 }
 
-fn sync_block(console: Res<ConsoleOpen>, mut ui: ResMut<UiBlock>) {
-    ui.0 = console.0;
+fn sync_block(console: Res<ConsoleOpen>, intro: Res<Intro>, mut ui: ResMut<UiBlock>) {
+    ui.0 = console.0 || intro.active;
 }
 
 fn cursor_grab(state: Res<State<AppState>>, console: Res<ConsoleOpen>, mut win: Query<&mut Window, With<PrimaryWindow>>) {
@@ -86,6 +87,7 @@ fn new_game(
     mut rig: ResMut<CamRig>,
     mut cp: ResMut<Checkpoint>,
     mut dir: ResMut<Director>,
+    mut intro: ResMut<Intro>,
     old: Query<Entity, Or<(With<Player>, With<PlayerCar>, With<Enemy>, With<Pickup>, With<Bullet>)>>,
 ) {
     for e in &old {
@@ -93,6 +95,8 @@ fn new_game(
     }
     *stats = Stats::default();
     *dir = Director::default();
+    intro.active = true;
+    intro.t = 0.0;
     ctl.in_car = false;
     let sp = start_pos();
     let g = terrain::ground_or_rim(sp.x, sp.y);

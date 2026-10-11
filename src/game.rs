@@ -161,3 +161,10 @@ pub struct Loading {
     pub t: f32,
     pub progress: f32,
 }
+
+/// Boot-intro tunnel overlay after pressing start.
+#[derive(Resource, Default)]
+pub struct Intro {
+    pub active: bool,
+    pub t: f32,
+}
